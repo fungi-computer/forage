@@ -1,0 +1,13 @@
+Forage re-expresses discovery behavior from @cloudflare/codemode.
+Copyright (c) 2025 Cloudflare, Inc.; MIT License.
+Source: https://github.com/cloudflare/agents
+
+YAML 2.9.0 (yaml): ISC License.
+Copyright Eemeli Aro <eemeli@gmail.com>.
+Source: https://github.com/eemeli/yaml
+License: https://github.com/eemeli/yaml/blob/v2.9.0/LICENSE
+
+JSON Schema Ref Parser 16.0.3: MIT License.
+Copyright (c) 2015 James Messinger.
+Source: https://github.com/APIDevTools/json-schema-ref-parser
+License: https://github.com/APIDevTools/json-schema-ref-parser/blob/v16.0.3/LICENSE

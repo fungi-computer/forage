@@ -1,0 +1,102 @@
+{
+  "expectedTarballFiles": [
+    "package/LICENSE",
+    "package/README.md",
+    "package/THIRD_PARTY_NOTICES",
+    "package/dist/app-api.d.ts",
+    "package/dist/app-api.js",
+    "package/dist/catalog.d.ts",
+    "package/dist/catalog.js",
+    "package/dist/definitions.d.ts",
+    "package/dist/definitions.js",
+    "package/dist/describe.d.ts",
+    "package/dist/describe.js",
+    "package/dist/errors.d.ts",
+    "package/dist/errors.js",
+    "package/dist/index.d.ts",
+    "package/dist/index.js",
+    "package/dist/json-schema-boundary.d.ts",
+    "package/dist/json-schema-boundary.js",
+    "package/dist/json-schema-subset.d.ts",
+    "package/dist/json-schema-subset.js",
+    "package/dist/list.d.ts",
+    "package/dist/list.js",
+    "package/dist/normalization.d.ts",
+    "package/dist/normalization.js",
+    "package/dist/openapi.d.ts",
+    "package/dist/openapi.js",
+    "package/dist/rendering.d.ts",
+    "package/dist/rendering.js",
+    "package/dist/schemas.d.ts",
+    "package/dist/schemas.js",
+    "package/dist/search.d.ts",
+    "package/dist/search.js",
+    "package/docs/api/README.md",
+    "package/docs/api/index.md",
+    "package/docs/api/json-schema-subset.md",
+    "package/docs/api/openapi.md",
+    "package/package.json"
+  ],
+  "runtimeFixture": "test/stranger/runtime.mjs",
+  "typecheckFixture": "test/stranger/consumer.mts",
+  "localDependencies": ["../puffball"],
+  "docs": {
+    "sigil": "list",
+    "home": {
+      "lead": "Lets an AI Agent find the right operation by name or description out of every one a host has registered, without granting it the power to run any.",
+      "example": {
+        "file": "home.ts",
+        "title": "Search and describe one operation",
+        "caption": "Builds a one-operation catalog, searches it by keyword, and describes the match as a typed TypeScript signature."
+      },
+      "ladder": {
+        "start": [
+          {
+            "title": "Quickstart",
+            "href": "/quickstart/",
+            "description": "Create a catalog, search it, and describe one operation."
+          },
+          {
+            "title": "Core concepts",
+            "href": "/concepts/#core-concepts",
+            "description": "What a catalog is, stable paths, and how search ranks matches."
+          }
+        ],
+        "tasks": [
+          {
+            "title": "List every operation page by page",
+            "href": "/concepts/#exhaustive-listing",
+            "description": "list()'s cursor, namespace filter and total count across pages."
+          },
+          {
+            "title": "Turn an OpenAPI spec into operations",
+            "href": "/api/openapi/",
+            "description": "normalizeOpenApi and parseOpenApiTable, Forage's host-only intake."
+          },
+          {
+            "title": "Project an App's methods as operations",
+            "href": "/api/entry/",
+            "description": "appApiOperations and appMethodSchemas for a decoded App Release API."
+          }
+        ],
+        "reference": [
+          {
+            "title": "API reference",
+            "href": "/api/",
+            "description": "Forage.createCatalog, the core discovery API and OpenAPI intake."
+          },
+          {
+            "title": "Install",
+            "href": "/install/",
+            "description": "Peer dependency on Zod, and the Node.js version."
+          },
+          {
+            "title": "Status and limits",
+            "href": "/status/",
+            "description": "What Forage doesn't do, and its errors and license."
+          }
+        ]
+      }
+    }
+  }
+}
