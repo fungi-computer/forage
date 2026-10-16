@@ -5,20 +5,21 @@ export const schemaNodeLimit = 50_000;
 const unsafePropertyNames = new Set(["__proto__", "constructor", "prototype"]);
 export const isUnsafeSchemaPropertyName = (name: string) =>
   unsafePropertyNames.has(name);
-export const parameterName = z
-  .string()
-  .min(1)
-  .max(128)
-  .refine((name) => !unsafePropertyNames.has(name));
+export const parameterName = z.lazy(() =>
+  z
+    .string()
+    .min(1)
+    .max(128)
+    .refine((name) => !unsafePropertyNames.has(name)),
+);
 export const thirdPartyText = (limit: number) =>
   z.string().max(limit).brand<"ThirdPartyText">();
 
 // Maintained decoding of one container level avoids expanding ref-parser's DAG
 // or recursively decoding remote JSON before the domain budget is checked.
-export const jsonSchemaContainer = z.union([
-  z.array(z.unknown()),
-  z.record(z.string(), z.unknown()),
-]);
+export const jsonSchemaContainer = z.lazy(() =>
+  z.union([z.array(z.unknown()), z.record(z.string(), z.unknown())]),
+);
 export function jsonSchemaValueInspection(
   budget: { nodes: number } = { nodes: 0 },
 ) {

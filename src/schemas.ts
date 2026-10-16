@@ -29,9 +29,8 @@ function jsonDepth(value: JsonValue, depth: number): number {
   return maximum;
 }
 
-const sampleSchema = z
-  .record(z.string(), z.json())
-  .superRefine((value, context) => {
+const sampleSchema = z.lazy(() =>
+  z.record(z.string(), z.json()).superRefine((value, context) => {
     if (Object.keys(value).length > maximumSampleEntries) {
       context.addIssue({
         code: "custom",
@@ -50,20 +49,25 @@ const sampleSchema = z
         message: "Sample exceeds the depth bound",
       });
     }
-  });
+  }),
+);
 
 /** Input accepted by the pure catalog search seam. */
-export const forageSearchInput = z.object({
-  query: z.string().max(200),
-  maxResults: z.number().int().min(1).max(50).default(50),
-});
+export const forageSearchInput = z.lazy(() =>
+  z.object({
+    query: z.string().max(200),
+    maxResults: z.number().int().min(1).max(50).default(50),
+  }),
+);
 
 /** Input accepted by the pure catalog description seam. */
-export const forageDescribeInput = z.object({
-  path: z.string().max(160),
-  detail: z.enum(["index", "full"]).default("full"),
-  methods: z.array(z.string().max(80)).max(50).optional(),
-});
+export const forageDescribeInput = z.lazy(() =>
+  z.object({
+    path: z.string().max(160),
+    detail: z.enum(["index", "full"]).default("full"),
+    methods: z.array(z.string().max(80)).max(50).optional(),
+  }),
+);
 
 /** Exhaustive listing request; cursor is scoped to one immutable catalog and filter. */
 export const forageListInput = z.object({
@@ -77,10 +81,12 @@ export const forageListInput = z.object({
     .optional(),
 });
 
-const peerSchema = z.object({
-  path: z.string().max(160),
-  capabilityNotes: z.string().max(500).optional(),
-});
+const peerSchema = z.lazy(() =>
+  z.object({
+    path: z.string().max(160),
+    capabilityNotes: z.string().max(500).optional(),
+  }),
+);
 
 /** One ranked operation in a search response. */
 export const searchResultSchema = z.object({
@@ -94,17 +100,19 @@ export const searchResultSchema = z.object({
 });
 
 /** Bounded search response envelope. */
-export const searchOutputSchema = z.object({
-  results: z.array(searchResultSchema).max(50),
-  total: z.number().int().min(0).max(maximumCatalogOperations),
-  truncated: z.boolean(),
-  topScore: z.number().min(0).max(maximumScore),
-  margin: z.number().min(0).max(maximumScore),
-  catalogStamp: z
-    .string()
-    .length(16)
-    .regex(/^[0-9a-f]{16}$/),
-});
+export const searchOutputSchema = z.lazy(() =>
+  z.object({
+    results: z.array(searchResultSchema).max(50),
+    total: z.number().int().min(0).max(maximumCatalogOperations),
+    truncated: z.boolean(),
+    topScore: z.number().min(0).max(maximumScore),
+    margin: z.number().min(0).max(maximumScore),
+    catalogStamp: z
+      .string()
+      .length(16)
+      .regex(/^[0-9a-f]{16}$/),
+  }),
+);
 
 /** One exhaustive page, using the exact search operation summary schema. */
 export const listOutputSchema = z.object({
@@ -118,34 +126,38 @@ export const listOutputSchema = z.object({
 });
 
 /** Deterministic description response. */
-export const describeOutputSchema = z.object({
-  path: z.string().max(160),
-  description: z.string().max(1000).optional(),
-  types: z.string().max(20000),
-  inputSchema: z
-    .json()
-    .refine(
-      (value) =>
-        JSON.stringify(value).length <= maximumDescriptionTypes &&
-        jsonDepth(value, 0) <= maximumSampleDepth,
-      "Input schema exceeds the description bounds",
-    )
-    .optional(),
-  kind: z.enum(["module", "operation"]),
-  usage: z.string().max(300).optional(),
-});
+export const describeOutputSchema = z.lazy(() =>
+  z.object({
+    path: z.string().max(160),
+    description: z.string().max(1000).optional(),
+    types: z.string().max(20000),
+    inputSchema: z
+      .json()
+      .refine(
+        (value) =>
+          JSON.stringify(value).length <= maximumDescriptionTypes &&
+          jsonDepth(value, 0) <= maximumSampleDepth,
+        "Input schema exceeds the description bounds",
+      )
+      .optional(),
+    kind: z.enum(["module", "operation"]),
+    usage: z.string().max(300).optional(),
+  }),
+);
 
 /** Closed failure vocabulary for malformed or absent catalog requests. */
-export const forageFailureSchema = z.object({
-  code: z.enum([
-    "empty_query",
-    "empty_catalog",
-    "unknown_target",
-    "duplicate_operation",
-    "invalid_input",
-  ]),
-  message: z.string().max(1000),
-});
+export const forageFailureSchema = z.lazy(() =>
+  z.object({
+    code: z.enum([
+      "empty_query",
+      "empty_catalog",
+      "unknown_target",
+      "duplicate_operation",
+      "invalid_input",
+    ]),
+    message: z.string().max(1000),
+  }),
+);
 
 /** Options Forage passes when it asks a schema for its JSON Schema. */
 export type JsonSchemaTarget = Readonly<{ target: "draft-2020-12" }>;
@@ -166,34 +178,42 @@ export type JsonSchemaSource = Readonly<{
   }>;
 }>;
 
-const jsonSchemaDescriber = z.object({
-  "~standard": z.object({
-    jsonSchema: z.object({
-      input: z.instanceof(Function),
-      output: z.instanceof(Function),
+const jsonSchemaDescriber = z.lazy(() =>
+  z.object({
+    "~standard": z.object({
+      jsonSchema: z.object({
+        input: z.instanceof(Function),
+        output: z.instanceof(Function),
+      }),
     }),
   }),
-});
-const jsonSchemaSource = z.custom<JsonSchemaSource>(
-  (value) => jsonSchemaDescriber.safeParse(value).success,
-  "Expected a Standard JSON Schema",
+);
+const jsonSchemaSource = z.lazy(() =>
+  z.custom<JsonSchemaSource>(
+    (value) => jsonSchemaDescriber.safeParse(value).success,
+    "Expected a Standard JSON Schema",
+  ),
 );
 
 /** A secret-free, callback-free operation descriptor. */
-export const operationSchema = z.object({
-  path: z.string().min(3).max(160).regex(pathPattern),
-  description: z.string().max(1000).optional(),
-  input: jsonSchemaSource,
-  output: jsonSchemaSource.optional(),
-  capabilityNotes: z.string().max(500).optional(),
-  instructions: z.string().max(1000).optional(),
-});
+export const operationSchema = z.lazy(() =>
+  z.object({
+    path: z.string().min(3).max(160).regex(pathPattern),
+    description: z.string().max(1000).optional(),
+    input: jsonSchemaSource,
+    output: jsonSchemaSource.optional(),
+    capabilityNotes: z.string().max(500).optional(),
+    instructions: z.string().max(1000).optional(),
+  }),
+);
 
 /** Input used to construct one immutable catalog revision. */
-export const catalogInputSchema = z.object({
-  revision: z.string().min(1).max(160),
-  operations: z.array(operationSchema).max(maximumCatalogOperations),
-});
+export const catalogInputSchema = z.lazy(() =>
+  z.object({
+    revision: z.string().min(1).max(160),
+    operations: z.array(operationSchema).max(maximumCatalogOperations),
+  }),
+);
 
 /** Parsed search request type. */
 export type ForageSearchInput = z.input<typeof forageSearchInput>;

@@ -2,7 +2,9 @@ import { z } from "zod";
 import type { Operation } from "./schemas.js";
 
 export const jsonValueSchema = z.json();
-const jsonPrimitiveSchema = z.union([z.string(), z.number(), z.boolean()]);
+const jsonPrimitiveSchema = z.lazy(() =>
+  z.union([z.string(), z.number(), z.boolean()]),
+);
 
 export type JsonValue = z.output<typeof jsonValueSchema>;
 /** A JSON object level within an already-parsed {@link JsonValue}. */

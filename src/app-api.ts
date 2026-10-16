@@ -2,12 +2,16 @@ import { z } from "zod";
 import type { AppApi } from "@fungi.computer/puffball";
 import type { Operation } from "./schemas.js";
 
-const bindingName = z
-  .string()
-  .min(1)
-  .max(75)
-  .regex(/^[A-Za-z][A-Za-z0-9_]*$/);
-const jsonSchema = z.union([z.record(z.string(), z.json()), z.boolean()]);
+const bindingName = z.lazy(() =>
+  z
+    .string()
+    .min(1)
+    .max(75)
+    .regex(/^[A-Za-z][A-Za-z0-9_]*$/),
+);
+const jsonSchema = z.lazy(() =>
+  z.union([z.record(z.string(), z.json()), z.boolean()]),
+);
 
 /** The shared JSON-Schema compiler for App methods and OpenAPI operations. */
 export function jsonSchemaToZod(
@@ -71,35 +75,39 @@ export function appToolSchemas(api: AppApi) {
   });
 }
 
-const familyRow = z
-  .object({
-    tool: bindingName,
-    title: z.string().max(120),
-    description: z.string().max(1000),
-    input: z.record(z.string(), z.json()),
-    output: z.record(z.string(), z.json()),
-    // Opaque extra arguments the declaring App wants merged with the
-    // caller's own `input` when a host dispatches to the family's `call`
-    // method (e.g. which of its own resources this row identifies, and any
-    // App-to-App bindings only the declaring App can resolve). Required, so
-    // a row that needs none still says so with `{}`. A host spreads this
-    // verbatim; it never reads into or defaults any of it.
-    call: z.record(z.string(), z.json()),
-  })
-  .catchall(z.json());
-const familyInventory = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("unindexed") }),
-  z.strictObject({
-    kind: z.literal("ready"),
-    tools: z
-      .array(familyRow)
-      .max(100)
-      .refine(
-        (rows) => new Set(rows.map((row) => row.tool)).size === rows.length,
-        { message: "Tool family names must be distinct" },
-      ),
-  }),
-]);
+const familyRow = z.lazy(() =>
+  z
+    .object({
+      tool: bindingName,
+      title: z.string().max(120),
+      description: z.string().max(1000),
+      input: z.record(z.string(), z.json()),
+      output: z.record(z.string(), z.json()),
+      // Opaque extra arguments the declaring App wants merged with the
+      // caller's own `input` when a host dispatches to the family's `call`
+      // method (e.g. which of its own resources this row identifies, and any
+      // App-to-App bindings only the declaring App can resolve). Required, so
+      // a row that needs none still says so with `{}`. A host spreads this
+      // verbatim; it never reads into or defaults any of it.
+      call: z.record(z.string(), z.json()),
+    })
+    .catchall(z.json()),
+);
+const familyInventory = z.lazy(() =>
+  z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("unindexed") }),
+    z.strictObject({
+      kind: z.literal("ready"),
+      tools: z
+        .array(familyRow)
+        .max(100)
+        .refine(
+          (rows) => new Set(rows.map((row) => row.tool)).size === rows.length,
+          { message: "Tool family names must be distinct" },
+        ),
+    }),
+  ]),
+);
 
 /** Decode the signed listing before compiling dynamic discovery schemas.
  * Rows retain App-owned selectors as data. Hosts supply call admission and

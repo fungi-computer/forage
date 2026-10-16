@@ -6,7 +6,9 @@ import {
   thirdPartyText,
 } from "./json-schema-boundary.js";
 
-const jsonSchema = z.union([z.record(z.string(), z.json()), z.boolean()]);
+const jsonSchema = z.lazy(() =>
+  z.union([z.record(z.string(), z.json()), z.boolean()]),
+);
 /** Decode the supported schema subset before using the shared Zod compiler.
  * Refuse depth over 32, more than 50,000 expanded nodes and reserved keys
  * before recursive decoding. Callers bound transport bytes separately.
