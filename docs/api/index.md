@@ -342,12 +342,14 @@ Narrow convenience namespace for the package's public seams.
 ### forageSearchInput
 
 ```ts
-const forageSearchInput: ZodObject<
-  {
-    query: ZodString;
-    maxResults: ZodDefault<ZodNumber>;
-  },
-  $strip
+const forageSearchInput: ZodLazy<
+  ZodObject<
+    {
+      query: ZodString;
+      maxResults: ZodDefault<ZodNumber>;
+    },
+    $strip
+  >
 >;
 ```
 
@@ -358,18 +360,20 @@ Input accepted by the pure catalog search seam.
 ### forageDescribeInput
 
 ```ts
-const forageDescribeInput: ZodObject<
-  {
-    path: ZodString;
-    detail: ZodDefault<
-      ZodEnum<{
-        index: "index";
-        full: "full";
-      }>
-    >;
-    methods: ZodOptional<ZodArray<ZodString>>;
-  },
-  $strip
+const forageDescribeInput: ZodLazy<
+  ZodObject<
+    {
+      path: ZodString;
+      detail: ZodDefault<
+        ZodEnum<{
+          index: "index";
+          full: "full";
+        }>
+      >;
+      methods: ZodOptional<ZodArray<ZodString>>;
+    },
+    $strip
+  >
 >;
 ```
 
@@ -404,16 +408,18 @@ const searchResultSchema: ZodObject<
     description: ZodOptional<ZodString>;
     score: ZodNumber;
     matchReason: ZodOptional<ZodString>;
-    sample: ZodOptional<ZodRecord<ZodString, ZodJSONSchema>>;
+    sample: ZodOptional<ZodLazy<ZodRecord<ZodString, ZodJSONSchema>>>;
     capabilityNotes: ZodOptional<ZodString>;
     peers: ZodOptional<
       ZodArray<
-        ZodObject<
-          {
-            path: ZodString;
-            capabilityNotes: ZodOptional<ZodString>;
-          },
-          $strip
+        ZodLazy<
+          ZodObject<
+            {
+              path: ZodString;
+              capabilityNotes: ZodOptional<ZodString>;
+            },
+            $strip
+          >
         >
       >
     >;
@@ -429,40 +435,25 @@ One ranked operation in a search response.
 ### searchOutputSchema
 
 ```ts
-const searchOutputSchema: ZodObject<
-  {
-    results: ZodArray<
-      ZodObject<
-        {
-          path: ZodString;
-          description: ZodOptional<ZodString>;
-          score: ZodNumber;
-          matchReason: ZodOptional<ZodString>;
-          sample: ZodOptional<ZodRecord<ZodString, ZodJSONSchema>>;
-          capabilityNotes: ZodOptional<ZodString>;
-          peers: ZodOptional<
-            ZodArray<
-              ZodObject<
-                {
-                  path: ZodString;
-                  capabilityNotes: ZodOptional<ZodString>;
-                },
-                $strip
-              >
-            >
-          >;
-        },
-        $strip
-      >
-    >;
-    total: ZodNumber;
-    truncated: ZodBoolean;
-    topScore: ZodNumber;
-    margin: ZodNumber;
-    catalogStamp: ZodString;
-  },
-  $strip
->;
+const searchOutputSchema: ZodLazy<ZodObject<{
+  results: ZodArray<ZodObject<{
+     path: ZodString;
+     description: ZodOptional<ZodString>;
+     score: ZodNumber;
+     matchReason: ZodOptional<ZodString>;
+     sample: ZodOptional<ZodLazy<ZodRecord<ZodString, ZodJSONSchema>>>;
+     capabilityNotes: ZodOptional<ZodString>;
+     peers: ZodOptional<ZodArray<ZodLazy<ZodObject<{
+        path: ...;
+        capabilityNotes: ...;
+     }, $strip>>>>;
+  }, $strip>>;
+  total: ZodNumber;
+  truncated: ZodBoolean;
+  topScore: ZodNumber;
+  margin: ZodNumber;
+  catalogStamp: ZodString;
+}, $strip>>;
 ```
 
 Bounded search response envelope.
@@ -472,38 +463,23 @@ Bounded search response envelope.
 ### listOutputSchema
 
 ```ts
-const listOutputSchema: ZodObject<
-  {
-    results: ZodArray<
-      ZodObject<
-        {
-          path: ZodString;
-          description: ZodOptional<ZodString>;
-          score: ZodNumber;
-          matchReason: ZodOptional<ZodString>;
-          sample: ZodOptional<ZodRecord<ZodString, ZodJSONSchema>>;
-          capabilityNotes: ZodOptional<ZodString>;
-          peers: ZodOptional<
-            ZodArray<
-              ZodObject<
-                {
-                  path: ZodString;
-                  capabilityNotes: ZodOptional<ZodString>;
-                },
-                $strip
-              >
-            >
-          >;
-        },
-        $strip
-      >
-    >;
-    total: ZodNumber;
-    nextCursor: ZodNullable<ZodString>;
-    catalogStamp: ZodString;
-  },
-  $strip
->;
+const listOutputSchema: ZodObject<{
+  results: ZodArray<ZodObject<{
+     path: ZodString;
+     description: ZodOptional<ZodString>;
+     score: ZodNumber;
+     matchReason: ZodOptional<ZodString>;
+     sample: ZodOptional<ZodLazy<ZodRecord<ZodString, ZodJSONSchema>>>;
+     capabilityNotes: ZodOptional<ZodString>;
+     peers: ZodOptional<ZodArray<ZodLazy<ZodObject<{
+        path: ZodString;
+        capabilityNotes: ZodOptional<...>;
+     }, $strip>>>>;
+  }, $strip>>;
+  total: ZodNumber;
+  nextCursor: ZodNullable<ZodString>;
+  catalogStamp: ZodString;
+}, $strip>;
 ```
 
 One exhaustive page, using the exact search operation summary schema.
@@ -513,19 +489,21 @@ One exhaustive page, using the exact search operation summary schema.
 ### describeOutputSchema
 
 ```ts
-const describeOutputSchema: ZodObject<
-  {
-    path: ZodString;
-    description: ZodOptional<ZodString>;
-    types: ZodString;
-    inputSchema: ZodOptional<ZodJSONSchema>;
-    kind: ZodEnum<{
-      module: "module";
-      operation: "operation";
-    }>;
-    usage: ZodOptional<ZodString>;
-  },
-  $strip
+const describeOutputSchema: ZodLazy<
+  ZodObject<
+    {
+      path: ZodString;
+      description: ZodOptional<ZodString>;
+      types: ZodString;
+      inputSchema: ZodOptional<ZodJSONSchema>;
+      kind: ZodEnum<{
+        module: "module";
+        operation: "operation";
+      }>;
+      usage: ZodOptional<ZodString>;
+    },
+    $strip
+  >
 >;
 ```
 
@@ -536,18 +514,20 @@ Deterministic description response.
 ### forageFailureSchema
 
 ```ts
-const forageFailureSchema: ZodObject<
-  {
-    code: ZodEnum<{
-      empty_query: "empty_query";
-      empty_catalog: "empty_catalog";
-      unknown_target: "unknown_target";
-      duplicate_operation: "duplicate_operation";
-      invalid_input: "invalid_input";
-    }>;
-    message: ZodString;
-  },
-  $strip
+const forageFailureSchema: ZodLazy<
+  ZodObject<
+    {
+      code: ZodEnum<{
+        empty_query: "empty_query";
+        empty_catalog: "empty_catalog";
+        unknown_target: "unknown_target";
+        duplicate_operation: "duplicate_operation";
+        invalid_input: "invalid_input";
+      }>;
+      message: ZodString;
+    },
+    $strip
+  >
 >;
 ```
 
@@ -558,42 +538,36 @@ Closed failure vocabulary for malformed or absent catalog requests.
 ### operationSchema
 
 ```ts
-const operationSchema: ZodObject<{
+const operationSchema: ZodLazy<ZodObject<{
   path: ZodString;
   description: ZodOptional<ZodString>;
-  input: ZodCustom<Readonly<{
+  input: ZodLazy<ZodCustom<Readonly<{
      ~standard: Readonly<{
         jsonSchema: Readonly<{
-           input: (options) => object;
-           output: (options) => object;
+           input: ...;
+           output: ...;
         }>;
      }>;
    }>, Readonly<{
      ~standard: Readonly<{
         jsonSchema: Readonly<{
-           input: (options) => object;
-           output: (options) => object;
-        }>;
-     }>;
-  }>>;
-  output: ZodOptional<ZodCustom<Readonly<{
-     ~standard: Readonly<{
-        jsonSchema: Readonly<{
-           input: (options) => ...;
-           output: (options) => ...;
-        }>;
-     }>;
-   }>, Readonly<{
-     ~standard: Readonly<{
-        jsonSchema: Readonly<{
-           input: (options) => ...;
-           output: (options) => ...;
+           input: ...;
+           output: ...;
         }>;
      }>;
   }>>>;
+  output: ZodOptional<ZodLazy<ZodCustom<Readonly<{
+     ~standard: Readonly<{
+        jsonSchema: Readonly<...>;
+     }>;
+   }>, Readonly<{
+     ~standard: Readonly<{
+        jsonSchema: Readonly<...>;
+     }>;
+  }>>>>;
   capabilityNotes: ZodOptional<ZodString>;
   instructions: ZodOptional<ZodString>;
-}, $strip>;
+}, $strip>>;
 ```
 
 A secret-free, callback-free operation descriptor.
@@ -603,33 +577,21 @@ A secret-free, callback-free operation descriptor.
 ### catalogInputSchema
 
 ```ts
-const catalogInputSchema: ZodObject<{
+const catalogInputSchema: ZodLazy<ZodObject<{
   revision: ZodString;
-  operations: ZodArray<ZodObject<{
+  operations: ZodArray<ZodLazy<ZodObject<{
      path: ZodString;
      description: ZodOptional<ZodString>;
-     input: ZodCustom<Readonly<{
-        ~standard: Readonly<{
-           jsonSchema: Readonly<...>;
-        }>;
+     input: ZodLazy<ZodCustom<Readonly<{
+        ~standard: ...;
       }>, Readonly<{
-        ~standard: Readonly<{
-           jsonSchema: Readonly<...>;
-        }>;
-     }>>;
-     output: ZodOptional<ZodCustom<Readonly<{
-        ~standard: Readonly<{
-           jsonSchema: ...;
-        }>;
-      }>, Readonly<{
-        ~standard: Readonly<{
-           jsonSchema: ...;
-        }>;
+        ~standard: ...;
      }>>>;
+     output: ZodOptional<ZodLazy<ZodCustom<Readonly<...>, Readonly<...>>>>;
      capabilityNotes: ZodOptional<ZodString>;
      instructions: ZodOptional<ZodString>;
-  }, $strip>>;
-}, $strip>;
+  }, $strip>>>;
+}, $strip>>;
 ```
 
 Input used to construct one immutable catalog revision.
@@ -715,8 +677,12 @@ function appToolFamilySchemas(
   call: string;
   effect: "write" | "external" | "read";
   requires: readonly (
+    | "approvals"
     | "agent.list"
     | "agent.manage"
+    | "agent.rename"
+    | "agent.avatar"
+    | "agent.toolPolicy"
     | "agent.read"
     | "agent.send"
     | "computer.list"
@@ -760,15 +726,17 @@ arguments; this projection supplies neither defaults nor handlers.
 #### Returns
 
 \| \{ `name`: `string`; `call`: `string`; `effect`: `"write"` \| `"external"` \|
-`"read"`; `requires`: readonly ( \| `"agent.list"` \| `"agent.manage"` \|
-`"agent.read"` \| `"agent.send"` \| `"computer.list"` \| `"computer.readFile"`
-\| `"computer.writeFile"` \| `"computer.execute"` \| `"llm.generation"` \|
-`"media.generation"` \| `"games:servers"` \| `"git.repository"` \| `"apps.open"`
-\| `"apps.call"` \| `"app.storage"` \| `"app.events.emit"` \|
-`"team.workbenchHost"` \| `"marketplace.browse"` \| `"marketplace.purchase"` \|
-`"workflow.run"` \| `"workflow.publish"` \| `"workflow.arm"` \| `"world"` \|
-`"channels.read"` \| `"channels.personal.manage"`)[]; `kind`: `"ready"` \|
-`"unindexed"`; `tools`: `object`[]; \} \| `null`
+`"read"`; `requires`: readonly ( \| `"approvals"` \| `"agent.list"` \|
+`"agent.manage"` \| `"agent.rename"` \| `"agent.avatar"` \| `"agent.toolPolicy"`
+\| `"agent.read"` \| `"agent.send"` \| `"computer.list"` \|
+`"computer.readFile"` \| `"computer.writeFile"` \| `"computer.execute"` \|
+`"llm.generation"` \| `"media.generation"` \| `"games:servers"` \|
+`"git.repository"` \| `"apps.open"` \| `"apps.call"` \| `"app.storage"` \|
+`"app.events.emit"` \| `"team.workbenchHost"` \| `"marketplace.browse"` \|
+`"marketplace.purchase"` \| `"workflow.run"` \| `"workflow.publish"` \|
+`"workflow.arm"` \| `"world"` \| `"channels.read"` \|
+`"channels.personal.manage"`)[]; `kind`: `"ready"` \| `"unindexed"`; `tools`:
+`object`[]; \} \| `null`
 
 ---
 

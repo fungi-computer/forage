@@ -197,7 +197,7 @@ const openApiOperationSchema: ZodObject<
     parameters: ZodArray<
       ZodObject<
         {
-          name: ZodString;
+          name: ZodLazy<ZodString>;
           in: ZodEnum<{
             header: "header";
             path: "path";

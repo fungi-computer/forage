@@ -476,6 +476,64 @@ it("bounds real serialized document depth, node count and operation count", asyn
 });
 
 it.each([
+  {
+    kind: "TRACE",
+    item: { trace: { responses: { "200": { description: "OK" } } } },
+    reason: "unsupported_method",
+  },
+  {
+    kind: "referenced Path Item",
+    item: { $ref: "#/components/pathItems/pet" },
+    reason: "unsupported_path_item",
+  },
+])(
+  "counts $kind entries, not metadata-only paths, toward the operation limit",
+  async ({ item, reason }) => {
+    const paths = Object.fromEntries(
+      Array.from({ length: 500 }, (_, index) => [`/p${String(index)}`, item]),
+    );
+    const spec = {
+      ...petstore,
+      components: { pathItems: { pet: petstore.paths["/pets/{petId}"] } },
+      paths: { ...paths, "/zz-metadata": { summary: "No operation" } },
+    };
+    const preview = await normalizeOpenApi(JSON.stringify(spec));
+    expect(preview.operations).toHaveLength(500);
+    expect(preview.operations[0]).toMatchObject({
+      status: "unsupported",
+      reason,
+    });
+    await expect(
+      normalizeOpenApi(
+        JSON.stringify({ ...spec, paths: { ...spec.paths, "/extra": item } }),
+      ),
+    ).rejects.toMatchObject({ code: "operations_limit" });
+  },
+);
+
+it("counts multiple methods on each path toward the operation limit", async () => {
+  const response = { responses: { "200": { description: "OK" } } };
+  const item = Object.fromEntries(
+    ["get", "head", "options", "post", "put", "patch", "delete", "trace"].map(
+      (method) => [method, response],
+    ),
+  );
+  await expect(
+    normalizeOpenApi(
+      JSON.stringify({
+        ...petstore,
+        paths: Object.fromEntries(
+          Array.from({ length: 63 }, (_, index) => [
+            `/p${String(index)}`,
+            item,
+          ]),
+        ),
+      }),
+    ),
+  ).rejects.toMatchObject({ code: "operations_limit" });
+});
+
+it.each([
   { width: 10, depth: 7 },
   { width: 2000, depth: 2 },
 ])(

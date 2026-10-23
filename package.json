@@ -1,6 +1,6 @@
 {
   "name": "@fungi.computer/forage",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Levi <levi@technomancy.dev>",
   "description": "Pure immutable Zod-typed capability discovery",
   "type": "module",

@@ -22,11 +22,7 @@ import {
 } from "./search.js";
 import { compareCodeUnits } from "./normalization.js";
 import { listOperations } from "./list.js";
-import {
-  renderNamespaceIndex,
-  renderOperationTypes,
-  schemaProjectionSize,
-} from "./rendering.js";
+import { renderOperationTypes, schemaProjectionSize } from "./rendering.js";
 
 const maximumCatalogProjectionBytes = 1_000_000;
 
@@ -101,24 +97,17 @@ function parseCatalog(input: CatalogInput): ParsedCatalog {
   const preparedOperations = operations.map((operation) =>
     prepareOperation(operation),
   );
-  const namespaces = new Map<string, PreparedOperation[]>();
+  // Broad namespace descriptions can be narrowed through the existing methods
+  // selector or discovered through list pages. Every operation must still fit
+  // a complete description on its own; every response keeps the same bound.
   for (const operation of preparedOperations) {
-    const namespace = operation.path.slice(0, operation.path.lastIndexOf("."));
-    const group = namespaces.get(namespace) ?? [];
-    group.push(operation);
-    namespaces.set(namespace, group);
-  }
-  for (const [namespace, group] of namespaces) {
-    const rendered = group.map((operation) => operation.rendered);
-    const index = renderNamespaceIndex(rendered);
-    const full = renderOperationTypes(rendered);
     if (
-      index.length > maximumDescriptionTypes ||
-      full.length > maximumDescriptionTypes
+      renderOperationTypes([operation.rendered]).length >
+      maximumDescriptionTypes
     ) {
       throw new ForageError(
         "invalid_input",
-        `Namespace description exceeds the bounded output: ${namespace}`,
+        `Operation description exceeds the bounded output: ${operation.path}`,
       );
     }
   }

@@ -752,14 +752,40 @@ describe("Forage boundary and structural contracts", () => {
       }),
     ).toThrow(ForageError);
   });
-  it("rejects namespace description overflow before installation", () => {
+  it("keeps a large flat namespace discoverable through bounded pages and method descriptions", () => {
     const operations = Array.from({ length: 160 }, (_, index) => ({
       path: `tools.read_${String(index)}`,
       input: z.object({ ["x".repeat(100)]: z.string() }),
     }));
-    expect(() => createCatalog({ revision: "r", operations })).toThrow(
-      ForageError,
+    const catalog = createCatalog({ revision: "r", operations });
+    const page = catalog.list({ namespace: "tools", limit: 50 });
+    expect(page.results).toHaveLength(50);
+    expect(page.total).toBe(160);
+    expect(page.nextCursor).not.toBeNull();
+    expect(catalog.describe({ path: "tools.read_0" }).types).toContain(
+      "tools$read_0_Input",
     );
+    expect(
+      catalog.describe({ path: "tools", methods: ["read_0"] }).types,
+    ).toContain("tools$read_0_Input");
+    expect(() => catalog.describe({ path: "tools" })).toThrow(
+      "Description types exceed the bounded output",
+    );
+    expect(() => catalog.describe({ path: "tools", detail: "index" })).toThrow(
+      "Description types exceed the bounded output",
+    );
+  });
+  it("still rejects an operation whose combined description cannot fit the response bound", () => {
+    const schema = z.enum(
+      Array.from({ length: 1300 }, (_, index) => `value_${String(index)}`),
+    );
+    expect(JSON.stringify(z.toJSONSchema(schema)).length).toBeLessThan(20_000);
+    expect(() =>
+      createCatalog({
+        revision: "r",
+        operations: [{ path: "tools.read", input: schema, output: schema }],
+      }),
+    ).toThrow("Operation description exceeds the bounded output");
   });
   it("constructs bounded provenance rather than leaking a Zod error", () => {
     const namespaceTerm = "a".repeat(49);

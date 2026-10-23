@@ -20,6 +20,16 @@ const reservedNames = new Set([
   "prototype",
   ...Object.getOwnPropertyNames(Object.prototype),
 ]);
+const operationMethods = [
+  "get",
+  "head",
+  "options",
+  "post",
+  "put",
+  "patch",
+  "delete",
+  "trace",
+] as const;
 const pathTemplate = z
   .string()
   .max(2048)
@@ -458,6 +468,22 @@ function inspectExpansion(
   }
 }
 
+function inspectOperationCount(paths: z.output<typeof document>["paths"]) {
+  let count = 0;
+  for (const item of Object.values(paths)) {
+    count +=
+      item.$ref !== undefined
+        ? 1
+        : operationMethods.filter((method) => item[method] !== undefined)
+            .length;
+    if (count > 500)
+      throw new OpenApiError(
+        "operations_limit",
+        "The spec exceeds 500 operations",
+      );
+  }
+}
+
 /** Pure intake: the host supplies bounded spec text, never a fetch locator. */
 export async function normalizeOpenApi(
   source: string,
@@ -524,14 +550,11 @@ export async function normalizeOpenApi(
   const budget = { nodes: 0 };
   const names = new Set(reservedNames);
   const operations: OpenApiPreviewOperation[] = [];
+  // Refuse oversized catalogs before cloning or compiling individual operations.
+  inspectOperationCount(parsed.paths);
   for (const [path, item] of Object.entries(parsed.paths).sort(([a], [b]) =>
     a < b ? -1 : a > b ? 1 : 0,
   )) {
-    if (operations.length >= 500)
-      throw new OpenApiError(
-        "operations_limit",
-        "The spec exceeds 500 operations",
-      );
     if (item.$ref !== undefined) {
       operations.push({
         status: "unsupported",
@@ -542,23 +565,9 @@ export async function normalizeOpenApi(
       });
       continue;
     }
-    for (const method of [
-      "get",
-      "head",
-      "options",
-      "post",
-      "put",
-      "patch",
-      "delete",
-      "trace",
-    ] as const) {
+    for (const method of operationMethods) {
       const raw = item[method];
       if (raw === undefined) continue;
-      if (operations.length >= 500)
-        throw new OpenApiError(
-          "operations_limit",
-          "The spec exceeds 500 operations",
-        );
       const label = z
         .object({ operationId: z.string().max(128).optional() })
         .safeParse(raw);

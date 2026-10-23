@@ -59,7 +59,13 @@ has a unique dotted path, an input schema, and optional description, capability
 notes, instructions, and output schema. Forage validates the catalog, orders its
 operations deterministically, and prepares descriptions once when the catalog is
 created. To change the catalog, create a new revision instead of mutating the
-existing one.
+existing one. Every operation must fit one complete description, and the
+catalog's aggregate metadata remains bounded. A whole namespace can exceed a
+description response without making its individually describable operations
+unavailable. Use paged `list({ namespace })` and describe one operation or
+select `methods` when a broad namespace description exceeds the response bound.
+This applies equally to flat namespaces and broad parents of nested namespaces;
+responses are never truncated and the response bound is unchanged.
 
 `search` ranks matching operations. `describe` returns a bounded TypeScript
 description for one operation or a namespace. Operation descriptions also
