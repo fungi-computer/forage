@@ -2,9 +2,6 @@ import { z } from "zod";
 import type { Operation } from "./schemas.js";
 
 export const jsonValueSchema = z.json();
-const jsonPrimitiveSchema = z.lazy(() =>
-  z.union([z.string(), z.number(), z.boolean()]),
-);
 
 export type JsonValue = z.output<typeof jsonValueSchema>;
 /** A JSON object level within an already-parsed {@link JsonValue}. */
@@ -17,11 +14,7 @@ export type JsonObject = Readonly<Record<string, JsonValue>>;
  * made walking a large schema quadratic.
  */
 export function isJsonObject(value: JsonValue): value is JsonObject {
-  return (
-    value !== null &&
-    !Array.isArray(value) &&
-    !jsonPrimitiveSchema.safeParse(value).success
-  );
+  return value !== null && !Array.isArray(value) && typeof value === "object";
 }
 
 export function compareCodeUnits(left: string, right: string): number {
@@ -78,6 +71,9 @@ export function stemVariants(token: string): string[] {
   };
   if (token.endsWith("ing") && token.length > 4) add(token.slice(0, -3));
   if (token.endsWith("ed") && token.length > 3) add(token.slice(0, -2));
+  if (token.endsWith("ation") && token.length > 6) {
+    add(`${token.slice(0, -3)}e`);
+  }
   if (token.endsWith("ies") && token.length > 4) {
     add(token.slice(0, -3));
     add(`${token.slice(0, -3)}y`);
@@ -89,35 +85,31 @@ export function stemVariants(token: string): string[] {
   return variants;
 }
 
-export function canonicalStringify(value: JsonValue): string {
-  if (value === null) return "null";
-  const primitive = jsonPrimitiveSchema.safeParse(value);
-  if (primitive.success) {
-    return JSON.stringify(primitive.data);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => canonicalStringify(item)).join(",")}]`;
-  }
-  if (!isJsonObject(value)) return "null";
-  const entries = Object.entries(value).sort(([left], [right]) =>
-    compareCodeUnits(left, right),
-  );
-  return `{${entries
-    .map(
-      ([key, entry]) => `${JSON.stringify(key)}:${canonicalStringify(entry)}`,
-    )
-    .join(",")}}`;
-}
-
 export function hashString64(value: string): string {
-  let hash = 0xcbf29ce484222325n;
-  const prime = 0x100000001b3n;
-  const mask = (1n << 64n) - 1n;
+  let word0 = 0x2325;
+  let word1 = 0x8422;
+  let word2 = 0x9ce4;
+  let word3 = 0xcbf2;
   for (let index = 0; index < value.length; index += 1) {
-    hash ^= BigInt(value.charCodeAt(index));
-    hash = (hash * prime) & mask;
+    const low = word0 ^ value.charCodeAt(index);
+    // The prime is 2^40 + 435. Four 16-bit limbs preserve modulo 2^64;
+    // every intermediate stays below 2^26, including before V8 optimizes
+    // this loop. Unsigned 32-bit limbs allocated boxed numbers when cold.
+    const product0 = low * 435;
+    const product1 = word1 * 435 + (product0 >>> 16);
+    const product2 = word2 * 435 + (product1 >>> 16) + (low << 8);
+    const product3 = word3 * 435 + (product2 >>> 16) + (word1 << 8);
+    word0 = product0 & 0xffff;
+    word1 = product1 & 0xffff;
+    word2 = product2 & 0xffff;
+    word3 = product3 & 0xffff;
   }
-  return hash.toString(16).padStart(16, "0");
+  return (
+    word3.toString(16).padStart(4, "0") +
+    word2.toString(16).padStart(4, "0") +
+    word1.toString(16).padStart(4, "0") +
+    word0.toString(16).padStart(4, "0")
+  );
 }
 
 export function operationMethod(path: Operation["path"]): string {

@@ -92,7 +92,7 @@
           {
             "title": "Install",
             "href": "/install/",
-            "description": "Peer dependency on Zod, and the Node.js version."
+            "description": "Runtime dependency on Zod, and the Node.js version."
           },
           {
             "title": "Status and limits",

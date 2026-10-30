@@ -1,9 +1,14 @@
+import { z } from "zod";
 import { ForageError } from "./errors.js";
 import {
   catalogInputSchema,
   forageDescribeInput,
   forageSearchInput,
   maximumDescriptionTypes,
+  maximumSampleBytes,
+  maximumSampleDepth,
+  maximumSampleEntries,
+  jsonDepth,
   type CatalogInput,
   type ForageDescribeInput,
   type ForageSearchInput,
@@ -22,7 +27,7 @@ import {
 } from "./search.js";
 import { compareCodeUnits } from "./normalization.js";
 import { listOperations } from "./list.js";
-import { renderOperationTypes, schemaProjectionSize } from "./rendering.js";
+import { rawSchema, schemaText } from "./rendering.js";
 
 const maximumCatalogProjectionBytes = 1_000_000;
 
@@ -30,6 +35,27 @@ type ParsedCatalog = {
   revision: string;
   operations: PreparedOperation[];
 };
+
+/**
+ * A nesting bound on the raw producer document, not a second JSON decoder.
+ * The ceiling bounds recursion; sibling order cannot change the maximum.
+ * Indexed traversal avoids cold iterator results and heap stack entries.
+ */
+function schemaDepth(children: readonly unknown[], depth = 0): number {
+  if (depth >= maximumSampleDepth)
+    return children.length === 0 ? depth : depth + 1;
+  let maximum = depth;
+  for (let index = children.length - 1; index >= 0; index -= 1) {
+    const child = children[index];
+    let childDepth = depth + 1;
+    if (Array.isArray(child)) childDepth = schemaDepth(child, childDepth);
+    else if (z.util.isObject(child))
+      childDepth = schemaDepth(Object.values(child), childDepth);
+    maximum = Math.max(maximum, childDepth);
+    if (maximum > maximumSampleDepth) return maximum;
+  }
+  return maximum;
+}
 
 /** Immutable public facade for one prepared catalog revision. */
 export type ForageCatalog = Readonly<{
@@ -57,6 +83,7 @@ function parseCatalog(input: CatalogInput): ParsedCatalog {
     compareCodeUnits(left.path, right.path),
   );
   const paths = new Set<string>();
+  const preparedOperations: PreparedOperation[] = [];
   let projectionBytes = 0;
   for (const operation of operations) {
     if (paths.has(operation.path)) {
@@ -66,24 +93,51 @@ function parseCatalog(input: CatalogInput): ParsedCatalog {
       );
     }
     paths.add(operation.path);
-    const inputProjection = schemaProjectionSize(operation.input, "input");
-    if (inputProjection === undefined) {
+    const inputProjection = schemaText(operation.input, "input").length;
+    if (
+      inputProjection > maximumDescriptionTypes ||
+      schemaDepth(Object.values(rawSchema(operation.input, "input"))) >
+        maximumSampleDepth
+    ) {
       throw new ForageError(
         "invalid_input",
         `Schema projection is too large: ${operation.path}`,
       );
     }
     const outputProjection = operation.output
-      ? schemaProjectionSize(operation.output, "output")
+      ? schemaText(operation.output, "output").length
       : 0;
-    if (outputProjection === undefined) {
+    if (
+      outputProjection > maximumDescriptionTypes ||
+      (operation.output !== undefined &&
+        schemaDepth(Object.values(rawSchema(operation.output, "output"))) >
+          maximumSampleDepth)
+    ) {
       throw new ForageError(
         "invalid_input",
         `Schema output projection is too large: ${operation.path}`,
       );
     }
+    const prepared = prepareOperation(operation);
+    const sample = prepared.sample;
+    const sampleBytes =
+      sample === undefined ? 0 : JSON.stringify(sample).length;
+    if (
+      sample !== undefined &&
+      (Object.keys(sample).length > maximumSampleEntries ||
+        sampleBytes > maximumSampleBytes ||
+        jsonDepth(sample, 0) > maximumSampleDepth)
+    )
+      throw new ForageError(
+        "invalid_input",
+        `Schema projection is too large: ${operation.path}`,
+      );
+    preparedOperations.push(prepared);
     projectionBytes +=
-      inputProjection + outputProjection + operation.path.length;
+      prepared.inputBytes +
+      prepared.outputBytes +
+      sampleBytes +
+      operation.path.length;
     projectionBytes += operation.description?.length ?? 0;
     projectionBytes += operation.capabilityNotes?.length ?? 0;
     projectionBytes += operation.instructions?.length ?? 0;
@@ -91,23 +145,6 @@ function parseCatalog(input: CatalogInput): ParsedCatalog {
       throw new ForageError(
         "invalid_input",
         "Catalog metadata exceeds the bounded projection",
-      );
-    }
-  }
-  const preparedOperations = operations.map((operation) =>
-    prepareOperation(operation),
-  );
-  // Broad namespace descriptions can be narrowed through the existing methods
-  // selector or discovered through list pages. Every operation must still fit
-  // a complete description on its own; every response keeps the same bound.
-  for (const operation of preparedOperations) {
-    if (
-      renderOperationTypes([operation.rendered]).length >
-      maximumDescriptionTypes
-    ) {
-      throw new ForageError(
-        "invalid_input",
-        `Operation description exceeds the bounded output: ${operation.path}`,
       );
     }
   }

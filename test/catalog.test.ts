@@ -196,6 +196,84 @@ describe("S3 — stopword-aware coverage", () => {
   });
 });
 
+describe("multi-word discovery", () => {
+  const prints: Operation = {
+    path: "prints.generate",
+    description: "Generate media from a prompt",
+    input: z.object({ prompt: z.string() }),
+  };
+
+  it("replays media then media generation and finds Prints first", () => {
+    const catalog = [
+      prints,
+      {
+        path: "tools.media",
+        description: "Inspect media",
+        input: z.object({}),
+      },
+    ];
+    expect(
+      searchCatalog(catalog, "media").results.some(
+        (result) => result.path === "prints.generate",
+      ),
+    ).toBe(true);
+    const result = searchCatalog(catalog, "media generation");
+    expect(result.results[0]?.path).toBe("prints.generate");
+    expect(result.results[0]?.matchReason).toContain("generation");
+  });
+
+  it("ranks both matched words ahead of a stronger one-word field match", () => {
+    const result = searchCatalog(
+      [
+        {
+          path: "tools.media",
+          description: "Inspect assets",
+          input: z.object({}),
+        },
+        prints,
+      ],
+      "media generation",
+    );
+    expect(result.results.map((entry) => entry.path)).toEqual([
+      "prints.generate",
+      "tools.media",
+    ]);
+    expect(result.topScore).toBeGreaterThan(result.results[1]?.score ?? 0);
+  });
+
+  it("puts two description words ahead of a one-word exact method and path prefix", () => {
+    const result = searchCatalog(
+      [
+        {
+          path: "media.media",
+          description: "Inspect assets",
+          input: z.object({}),
+        },
+        {
+          path: "prints.create",
+          description: "Media generation from a prompt",
+          input: z.object({ prompt: z.string() }),
+        },
+      ],
+      "media generation",
+    );
+    expect(result.results.map((entry) => entry.path)).toEqual([
+      "prints.create",
+      "media.media",
+    ]);
+    expect(result.results[0]?.score).toBeGreaterThan(
+      result.results[1]?.score ?? 0,
+    );
+  });
+
+  it("still returns no results when no query word matches", () => {
+    const result = searchCatalog([prints], "xyzzy qwerty");
+    expect(result.results).toEqual([]);
+    expect(result.total).toBe(0);
+    expect(result.topScore).toBe(0);
+  });
+});
+
 describe("S4 — search envelope", () => {
   it("reports top score, margin, and a numeric stamp with results", () => {
     const result = searchCatalog(files, "read");
@@ -288,7 +366,7 @@ describe("S5 — revision stability", () => {
       first.search({ query: "read" }),
     );
   });
-  it("schema property insertion order does not change descriptions or samples", () => {
+  it("keeps descriptions and samples stable while raw-text fingerprints track property order", () => {
     const create = (input: z.ZodType) =>
       createCatalog({
         revision: "r",
@@ -310,9 +388,10 @@ describe("S5 — revision stability", () => {
     expect(first.describe({ path: "files.read" })).toEqual(
       second.describe({ path: "files.read" }),
     );
-    expect(first.search({ query: "read" })).toEqual(
-      second.search({ query: "read" }),
+    expect(first.search({ query: "read" }).results).toEqual(
+      second.search({ query: "read" }).results,
     );
+    expect(first.stamp()).not.toBe(second.stamp());
   });
   it("operation arrays and catalog instances are immutable snapshots", () => {
     const input = { revision: "r", operations: [...files] };
@@ -709,6 +788,54 @@ describe("Forage boundary and structural contracts", () => {
       });
     }
   });
+  for (const io of ["input", "output"] as const) {
+    it.each([null, undefined])(
+      `reports a non-schema ${io} producer result (%s) as a typed input failure`,
+      (root) => {
+        const source = {
+          "~standard": {
+            jsonSchema: {
+              input: () => (io === "input" ? root : {}),
+              output: () => (io === "output" ? root : {}),
+            },
+          },
+        };
+        const operation = operationSchema.parse({
+          path: "files.read",
+          input: source,
+          output: source,
+        });
+        expect(() =>
+          createCatalog({ revision: "r", operations: [operation] }),
+        ).toThrow(ForageError);
+      },
+    );
+  }
+  it("describes metadata normalized by Zod's JSON Schema producer", () => {
+    const input = textInput().meta({ examples: [undefined] });
+    const catalog = createCatalog({
+      revision: "r",
+      operations: [{ path: "files.read", input }],
+    });
+    expect(catalog.describe({ path: "files.read" }).inputSchema).toMatchObject({
+      examples: [null],
+    });
+  });
+  it("reports non-JSON Standard JSON Schema metadata as a typed describe failure", () => {
+    const input = {
+      "~standard": {
+        jsonSchema: {
+          input: () => ({ type: "object", examples: [undefined] }),
+          output: () => ({}),
+        },
+      },
+    };
+    const catalog = createCatalog({
+      revision: "r",
+      operations: [{ path: "files.read", input }],
+    });
+    expect(() => catalog.describe({ path: "files.read" })).toThrow(ForageError);
+  });
   it("rejects an oversized output projection before installation", () => {
     const output = z.string().meta({ description: "x".repeat(21_000) });
     expect(() =>
@@ -718,6 +845,34 @@ describe("Forage boundary and structural contracts", () => {
       }),
     ).toThrow(ForageError);
   });
+  for (const direction of ["input", "output"] as const) {
+    it.each([
+      [16, "object"],
+      [17, "object"],
+      [16, "array"],
+      [17, "array"],
+    ] as const)(
+      `preserves the ${direction} projection depth boundary at %i through %s metadata`,
+      (depth, container) => {
+        let annotation: z.output<z.ZodJSONSchema> = "leaf";
+        for (let level = 1; level < depth; level += 1)
+          annotation =
+            container === "array" ? [annotation] : { value: annotation };
+        const operation: Operation = {
+          path: "files.read",
+          input: textInput(),
+        };
+        operation[direction] = z.object({}).meta({ annotation });
+        const install = () =>
+          createCatalog({ revision: "depth", operations: [operation] });
+        if (depth === 16)
+          expect(install().describe({ path: "files.read" }).kind).toBe(
+            "operation",
+          );
+        else expect(install).toThrow(ForageError);
+      },
+    );
+  }
   it("rejects too many derived sample entries before installation", () => {
     const fields: Record<string, z.ZodType> = {};
     for (let index = 0; index <= 100; index += 1) {
@@ -775,17 +930,19 @@ describe("Forage boundary and structural contracts", () => {
       "Description types exceed the bounded output",
     );
   });
-  it("still rejects an operation whose combined description cannot fit the response bound", () => {
+  it("rejects an oversized combined description when that operation is requested", () => {
     const schema = z.enum(
       Array.from({ length: 1300 }, (_, index) => `value_${String(index)}`),
     );
     expect(JSON.stringify(z.toJSONSchema(schema)).length).toBeLessThan(20_000);
-    expect(() =>
-      createCatalog({
-        revision: "r",
-        operations: [{ path: "tools.read", input: schema, output: schema }],
-      }),
-    ).toThrow("Operation description exceeds the bounded output");
+    const catalog = createCatalog({
+      revision: "r",
+      operations: [{ path: "tools.read", input: schema, output: schema }],
+    });
+    expect(catalog.list({}).total).toBe(1);
+    expect(() => catalog.describe({ path: "tools.read" })).toThrow(
+      "Operation description exceeds the bounded output",
+    );
   });
   it("constructs bounded provenance rather than leaking a Zod error", () => {
     const namespaceTerm = "a".repeat(49);
@@ -959,7 +1116,7 @@ describe("Standard JSON Schema sources", () => {
 });
 
 describe("Shared definition expansion", () => {
-  it("refuses a schema whose $defs expand without bound", () => {
+  it("constructs 102 operations without rendering unrequested types and bounds requested reference expansion", () => {
     // Each level references the next twice: 2^20 expansions if unbounded.
     type Level = Readonly<{
       type: "object" | "string";
@@ -978,13 +1135,82 @@ describe("Shared definition expansion", () => {
     const source: foragePackage.JsonSchemaSource = {
       "~standard": { jsonSchema: { input: () => tree, output: () => tree } },
     };
-    expect(() =>
-      createCatalog({
-        revision: "explosive",
-        operations: [{ path: "demo.boom", input: source }],
+    const input = z.object({
+      record: z.object({
+        title: z.string(),
+        tags: z.array(z.string()),
+        parts: z.array(z.object({ name: z.string(), active: z.boolean() })),
       }),
-    ).toThrow("Schema references expand more than 256 times");
+    });
+    const catalog = createCatalog({
+      revision: "explosive",
+      operations: [
+        ...Array.from({ length: 101 }, (_, index) => ({
+          path: `demo.method_${String(index)}`,
+          input,
+          output: input,
+        })),
+        { path: "demo.boom", input: source },
+      ],
+    });
+    expect(catalog.list({}).total).toBe(102);
+    expect(catalog.describe({ path: "demo.method_0" }).types).toContain(
+      "demo$method_0_Input",
+    );
+    expect(() => catalog.describe({ path: "demo.boom" })).toThrow(
+      "Schema references expand more than 256 times",
+    );
+    expect(() => catalog.describe({ path: "demo", detail: "index" })).toThrow(
+      ForageError,
+    );
   });
+});
+
+it("preserves App reference detail and tool-family index text through the same renderer", () => {
+  const input = {
+    type: "object",
+    properties: { record: { $ref: "#/$defs/record" } },
+    required: ["record"],
+    $defs: {
+      record: {
+        type: "object",
+        properties: { title: { type: "string" } },
+        required: ["title"],
+      },
+    },
+  };
+  const output = {
+    type: "object",
+    properties: { saved: { type: "boolean" } },
+    required: ["saved"],
+  };
+  const catalog = createCatalog({
+    revision: "golden-apps",
+    operations: ["BONSAI.method1", "TRELLIS.flows.run"].map((path) => ({
+      path,
+      input: foragePackage.appJsonSchema(input),
+      output: foragePackage.appJsonSchema(output),
+    })),
+  });
+  const detail = catalog.describe({ path: "BONSAI.method1" });
+  expect(detail.inputSchema).toEqual(input);
+  expect(detail.types).toBe(`export type BONSAI$method1_Input = {
+  record: {
+    title: string;
+  };
+};
+export type BONSAI$method1_Output = {
+  saved: boolean;
+};
+export declare const env: { ["BONSAI"]: { ["method1"]: (input: BONSAI$method1_Input) => Promise<BONSAI$method1_Output> } };`);
+  expect(catalog.describe({ path: "TRELLIS.flows", detail: "index" }).types)
+    .toBe(`export declare const env: { ["TRELLIS"]: { ["flows"]: { ["run"]: (input: {
+  record: {
+    title: string;
+  };
+}) => Promise<{
+  saved: boolean;
+}> } } };`);
 });
 
 it("describes the bounds from the same schema that validates operation input", () => {
@@ -1032,11 +1258,29 @@ it("omits hidden App operations from discovery while retaining direct RPC valida
   expect(direct.input.safeParse({ cursor: 1 }).success).toBe(false);
 });
 
+it.each(["input", "output"] as const)(
+  "describes an immutable App declaration without copying its %s projection",
+  (direction) => {
+    const declaration = Object.freeze({
+      type: "object",
+      properties: Object.freeze({ title: Object.freeze({ type: "string" }) }),
+      required: Object.freeze(["title"]),
+      additionalProperties: false,
+    });
+    const schema = foragePackage.appJsonSchema(declaration);
+    expect(
+      schema["~standard"].jsonSchema[direction]({ target: "draft-2020-12" }),
+    ).toBe(declaration);
+    expect(schema.safeParse({ title: "Saved" }).success).toBe(true);
+    expect(schema.safeParse({ title: 42 }).success).toBe(false);
+  },
+);
+
 it("describes a bounded App schema without adding JSON-validation nesting", () => {
   let nested: z.ZodType = z.string();
   for (let index = 0; index < 7; index++)
     nested = z.strictObject({ value: nested });
-  const declared = z.toJSONSchema(nested);
+  const declared = z.record(z.string(), z.json()).parse(z.toJSONSchema(nested));
   const methods = foragePackage.appMethodSchemas({
     methods: {
       read: {
@@ -1151,7 +1395,9 @@ it("describes published family rows using the signed listing and authored input 
         effect: "read" as const,
         requires: [],
         input: { type: "object" },
-        output: z.toJSONSchema(listingSchema),
+        output: z
+          .record(z.string(), z.json())
+          .parse(z.toJSONSchema(listingSchema)),
       },
       run: {
         description: "Run",

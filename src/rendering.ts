@@ -1,20 +1,10 @@
 import { z } from "zod";
 import { ForageError } from "./errors.js";
-import {
-  canonicalStringify,
-  compareCodeUnits,
-  isJsonObject,
-  jsonValueSchema,
-} from "./normalization.js";
+import { compareCodeUnits, jsonValueSchema } from "./normalization.js";
 import type { JsonValue } from "./normalization.js";
-import {
-  type JsonSchemaSource,
-  maximumSampleBytes,
-  maximumSampleDepth,
-  maximumSampleEntries,
-} from "./schemas.js";
+import type { JsonSchemaSource, Operation } from "./schemas.js";
 
-/** Installation-time TypeScript projections for one catalog operation. */
+/** Requested TypeScript projections for one catalog operation. */
 export type RenderedOperation = Readonly<{
   types: string;
   environment: string;
@@ -22,120 +12,104 @@ export type RenderedOperation = Readonly<{
 }>;
 
 /** The JSON Schema subset Forage reads when it renders and samples a schema. */
-type SchemaNode =
-  | boolean
-  | Readonly<{
-      $ref?: string | undefined;
-      $defs?: Readonly<Record<string, SchemaNode>> | undefined;
-      definitions?: Readonly<Record<string, SchemaNode>> | undefined;
-      const?: unknown;
-      enum?: readonly unknown[] | undefined;
-      oneOf?: readonly SchemaNode[] | undefined;
-      anyOf?: readonly SchemaNode[] | undefined;
-      allOf?: readonly SchemaNode[] | undefined;
-      type?: string | readonly string[] | undefined;
-      properties?: Readonly<Record<string, SchemaNode>> | undefined;
-      additionalProperties?: SchemaNode | undefined;
-      required?: readonly string[] | undefined;
-      prefixItems?: readonly SchemaNode[] | undefined;
-      items?: SchemaNode | readonly SchemaNode[] | undefined;
-      examples?: readonly unknown[] | undefined;
-      default?: unknown;
-    }>;
+const schemaNode = z.union([
+  z.looseObject({
+    $ref: z.string().optional(),
+    $defs: z.record(z.string(), z.unknown()).optional(),
+    definitions: z.record(z.string(), z.unknown()).optional(),
+    const: z.unknown().optional(),
+    enum: z.array(z.unknown()).optional(),
+    oneOf: z.array(z.unknown()).optional(),
+    anyOf: z.array(z.unknown()).optional(),
+    allOf: z.array(z.unknown()).optional(),
+    type: z.union([z.string(), z.array(z.string())]).optional(),
+    properties: z.record(z.string(), z.unknown()).optional(),
+    additionalProperties: z.unknown().optional(),
+    required: z.array(z.string()).optional(),
+    prefixItems: z.array(z.unknown()).optional(),
+    items: z.unknown().optional(),
+    examples: z.array(z.unknown()).optional(),
+    default: z.unknown().optional(),
+  }),
+  z.boolean(),
+]);
+type SchemaNode = z.output<typeof schemaNode>;
 
-const schemaNode: z.ZodType<SchemaNode> = z.lazy(() =>
-  z.union([
-    z.boolean(),
-    z.looseObject({
-      $ref: z.string().optional(),
-      $defs: z.record(z.string(), schemaNode).optional(),
-      definitions: z.record(z.string(), schemaNode).optional(),
-      const: z.unknown().optional(),
-      enum: z.array(z.unknown()).optional(),
-      oneOf: z.array(schemaNode).optional(),
-      anyOf: z.array(schemaNode).optional(),
-      allOf: z.array(schemaNode).optional(),
-      type: z.union([z.string(), z.array(z.string())]).optional(),
-      properties: z.record(z.string(), schemaNode).optional(),
-      additionalProperties: schemaNode.optional(),
-      required: z.array(z.string()).optional(),
-      prefixItems: z.array(schemaNode).optional(),
-      items: z.union([schemaNode, z.array(schemaNode)]).optional(),
-      examples: z.array(z.unknown()).optional(),
-      default: z.unknown().optional(),
-    }),
-  ]),
-);
-
-/** What one schema projects to in one direction, computed at most once. */
-type SchemaFacts = {
-  readonly node: SchemaNode;
-  readonly json: JsonValue | undefined;
-  fingerprint?: string;
-  size?: Readonly<{ bytes: number | undefined }>;
+type Projection = {
+  readonly raw: object;
+  text?: string;
 };
 
-/**
- * Facts already derived, per schema object and direction. A Standard JSON
- * Schema describes an immutable schema, so its projection is a pure function
- * of the object: compiling a catalog asks for the same projection several
- * times per operation (size, fingerprint, sample, rendering), and a host that
- * recompiles a catalog over the same installed schemas asks again on every
- * compile. Projecting, validating, fingerprinting and sizing once per schema
- * keeps catalog compilation proportional to what actually changed.
- */
-const schemaFacts = new WeakMap<
+/** Standard JSON Schema projections are immutable, per source and direction. */
+const projections = new WeakMap<
   JsonSchemaSource,
-  Partial<Record<"input" | "output", SchemaFacts>>
+  Partial<Record<"input" | "output", Projection>>
 >();
 
-function factsFor(
+function projectionFor(
   schema: JsonSchemaSource,
   io: "input" | "output",
-): SchemaFacts {
-  let entry = schemaFacts.get(schema);
+): Projection {
+  let entry = projections.get(schema);
   const cached = entry?.[io];
   if (cached !== undefined) return cached;
-  let node: SchemaNode;
+  let raw: object;
   try {
-    node = schemaNode.parse(
-      schema["~standard"].jsonSchema[io]({ target: "draft-2020-12" }),
-    );
+    raw = schema["~standard"].jsonSchema[io]({ target: "draft-2020-12" });
   } catch {
     throw new ForageError(
       "invalid_input",
       "Schema cannot be projected to JSON Schema",
     );
   }
-  const json = jsonValueSchema.safeParse(node);
-  const facts: SchemaFacts = {
-    node,
-    json: json.success ? json.data : undefined,
-  };
+  decodeNode(raw);
+  const projection: Projection = { raw };
   if (entry === undefined) {
     entry = {};
-    schemaFacts.set(schema, entry);
+    projections.set(schema, entry);
   }
-  entry[io] = facts;
-  return facts;
+  entry[io] = projection;
+  return projection;
 }
 
-function schemaFor(
+/** The producer's document, without a recursive projection decode or copy. */
+export function rawSchema(
   schema: JsonSchemaSource,
   io: "input" | "output",
-): SchemaNode {
-  return factsFor(schema, io).node;
+): object {
+  return projectionFor(schema, io).raw;
 }
 
-function isNodeList(
-  value: SchemaNode | readonly SchemaNode[],
-): value is readonly SchemaNode[] {
-  return Array.isArray(value);
+/** Native serialization owns the document's text representation and failures. */
+export function schemaText(
+  schema: JsonSchemaSource,
+  io: "input" | "output",
+): string {
+  const projection = projectionFor(schema, io);
+  try {
+    projection.text ??= JSON.stringify(projection.raw);
+    return projection.text;
+  } catch {
+    throw new ForageError(
+      "invalid_input",
+      "Schema cannot be projected to JSON Schema",
+    );
+  }
+}
+
+function decodeNode(value: unknown): SchemaNode {
+  const parsed = schemaNode.safeParse(value);
+  if (!parsed.success)
+    throw new ForageError(
+      "invalid_input",
+      "Schema cannot be projected to JSON Schema",
+    );
+  return parsed.data;
 }
 
 /** Local definitions a schema may reference, and the ones being expanded. */
 type DefinitionScope = Readonly<{
-  definitions: Readonly<Record<string, SchemaNode>>;
+  definitions: NonNullable<Exclude<SchemaNode, boolean>["$defs"]>;
   expanding: ReadonlySet<string>;
   /** Shared across one rendering; each `$ref` expansion spends one. */
   budget: { expansions: number };
@@ -162,7 +136,7 @@ function renderReference(
       "invalid_input",
       `Schema references expand more than ${String(maximumReferenceExpansions)} times; flatten its shared definitions`,
     );
-  return renderNode(target, depth, {
+  return renderNode(decodeNode(target), depth, {
     definitions: refs.definitions,
     expanding: new Set([...refs.expanding, name]),
     budget: refs.budget,
@@ -181,7 +155,7 @@ function rendersUnion(node: SchemaNode, refs: DefinitionScope): boolean {
     return (
       name !== undefined &&
       target !== undefined &&
-      rendersUnion(target, {
+      rendersUnion(decodeNode(target), {
         definitions: refs.definitions,
         expanding: new Set([...refs.expanding, name]),
         budget: refs.budget,
@@ -197,33 +171,40 @@ function rendersUnion(node: SchemaNode, refs: DefinitionScope): boolean {
 }
 
 function renderNode(
-  node: SchemaNode | undefined,
+  node: SchemaNode,
   depth: number,
-  refs: DefinitionScope,
+  scope?: DefinitionScope,
 ): string {
-  if (node === undefined || node === true || node === false || depth > 12) {
+  if (depth > 12) {
     return "unknown";
   }
+  if (node === true || node === false) return "unknown";
+  const refs = scope ?? {
+    definitions: { ...node.definitions, ...node.$defs },
+    expanding: new Set<string>(),
+    budget: { expansions: 0 },
+  };
   if (node.$ref) return renderReference(node.$ref, depth, refs);
   if (node.const !== undefined) return JSON.stringify(node.const);
   if (node.enum)
     return node.enum.map((value) => JSON.stringify(value)).join(" | ");
   if (node.oneOf) {
     return node.oneOf
-      .map((value) => renderNode(value, depth + 1, refs))
+      .map((value) => renderNode(decodeNode(value), depth + 1, refs))
       .join(" | ");
   }
   if (node.anyOf) {
     return node.anyOf
-      .map((value) => renderNode(value, depth + 1, refs))
+      .map((value) => renderNode(decodeNode(value), depth + 1, refs))
       .join(" | ");
   }
   if (node.allOf) {
     return node.allOf
       .map((value) => {
-        const member = renderNode(value, depth + 1, refs);
+        const child = decodeNode(value);
+        const member = renderNode(child, depth + 1, refs);
         // `&` binds tighter than `|`: keep a union member whole.
-        return rendersUnion(value, refs) ? `(${member})` : member;
+        return rendersUnion(child, refs) ? `(${member})` : member;
       })
       .join(" & ");
   }
@@ -235,13 +216,13 @@ function renderNode(
       const additional = node.additionalProperties;
       if (additional === false) return "Record<string, never>";
       if (additional && additional !== true) {
-        return `Record<string, ${renderNode(additional, depth + 1, refs)}>`;
+        return `Record<string, ${renderNode(decodeNode(additional), depth + 1, refs)}>`;
       }
       return "Record<string, unknown>";
     }
     const required = new Set(node.required ?? []);
     const lines = properties.map(([key, value]) => {
-      const child = renderNode(value, depth + 1, refs);
+      const child = renderNode(decodeNode(value), depth + 1, refs);
       const optional = required.has(key) ? "" : "?";
       const safeKey = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key)
         ? key
@@ -256,23 +237,23 @@ ${"  ".repeat(depth)}}`;
     const items = node.items;
     if (node.prefixItems && node.prefixItems.length > 0) {
       const tuple = node.prefixItems.map((value) =>
-        renderNode(value, depth + 1, refs),
+        renderNode(decodeNode(value), depth + 1, refs),
       );
-      if (items !== undefined && items !== true && !isNodeList(items)) {
-        tuple.push(`...${renderNode(items, depth + 1, refs)}[]`);
+      if (items !== undefined && items !== true && !Array.isArray(items)) {
+        tuple.push(`...${renderNode(decodeNode(items), depth + 1, refs)}[]`);
       }
       return `[${tuple.join(", ")}]`;
     }
-    if (items !== undefined && isNodeList(items))
-      return `[${items.map((value) => renderNode(value, depth + 1, refs)).join(", ")}][]`;
-    const item = renderNode(items, depth + 1, refs);
+    if (items !== undefined && Array.isArray(items))
+      return `[${items.map((value) => renderNode(decodeNode(value), depth + 1, refs)).join(", ")}][]`;
+    const itemNode = items === undefined ? true : decodeNode(items);
+    const item = renderNode(itemNode, depth + 1, refs);
     const compoundItem =
-      items !== undefined &&
-      items !== true &&
-      items !== false &&
-      (items.oneOf !== undefined ||
-        items.anyOf !== undefined ||
-        items.allOf !== undefined);
+      itemNode !== true &&
+      itemNode !== false &&
+      (itemNode.oneOf !== undefined ||
+        itemNode.anyOf !== undefined ||
+        itemNode.allOf !== undefined);
     return `${compoundItem ? `(${item})` : item}[]`;
   }
   switch (node.type) {
@@ -295,16 +276,7 @@ function renderSchemaType(
   schema: JsonSchemaSource,
   io: "input" | "output" = "input",
 ): string {
-  const root = schemaFor(schema, io);
-  const definitions =
-    root === true || root === false
-      ? {}
-      : { ...root.definitions, ...root.$defs };
-  return renderNode(root, 0, {
-    definitions,
-    expanding: new Set(),
-    budget: { expansions: 0 },
-  });
+  return renderNode(decodeNode(rawSchema(schema, io)), 0);
 }
 
 function safeTypeName(name: string): string {
@@ -342,18 +314,18 @@ export function renderOperationTypes(
     : `${types}\nexport declare const env: ${operations.map((operation) => operation.environment).join(" & ")};`;
 }
 
-/** Prepare all TypeScript descriptions for one operation at installation. */
-export function renderOperation(operation: {
-  path: string;
-  input: JsonSchemaSource;
-  output?: JsonSchemaSource | undefined;
-}): RenderedOperation {
+const renderedOperations = new WeakMap<Operation, RenderedOperation>();
+
+/** Render only requested operations, once per immutable prepared operation. */
+export function renderOperation(operation: Operation): RenderedOperation {
+  const cached = renderedOperations.get(operation);
+  if (cached !== undefined) return cached;
   const name = safeTypeName(operation.path.replace(/\./g, "$"));
   const input = renderSchemaType(operation.input, "input");
   const output = operation.output
     ? renderSchemaType(operation.output, "output")
     : "unknown";
-  return Object.freeze({
+  const rendered = Object.freeze({
     indexEnvironment: renderEnvironment(operation.path, input, output),
     environment: renderEnvironment(
       operation.path,
@@ -362,25 +334,26 @@ export function renderOperation(operation: {
     ),
     types: `export type ${name}_Input = ${input};\nexport type ${name}_Output = ${output};`,
   });
+  renderedOperations.set(operation, rendered);
+  return rendered;
 }
 
 /** Derive sample arguments solely from input-schema examples and defaults. */
 export function deriveSample(
   schema: JsonSchemaSource,
 ): Record<string, JsonValue> | undefined {
-  const node = schemaFor(schema, "input");
+  const node = decodeNode(rawSchema(schema, "input"));
   if (node === true || node === false || !node.properties) {
     return undefined;
   }
-  const properties: Readonly<Record<string, SchemaNode>> = node.properties;
   const sample: Record<string, JsonValue> = {};
   let found = false;
-  const entries = Object.entries(properties).sort(([left], [right]) =>
+  const entries = Object.entries(node.properties).sort(([left], [right]) =>
     compareCodeUnits(left, right),
   );
   for (const [key, value] of entries) {
-    if (value === true || value === false) continue;
-    const property = value;
+    const property = decodeNode(value);
+    if (property === true || property === false) continue;
     const examples = property.examples;
     if (examples && examples.length > 0) {
       const example = jsonValueSchema.safeParse(examples[0]);
@@ -397,88 +370,4 @@ export function deriveSample(
     }
   }
   return found ? sample : undefined;
-}
-
-/** Preserve validator constraints in the operation's Standard JSON Schema. */
-export function inputSchemaProjection(schema: JsonSchemaSource): JsonValue {
-  const projection = factsFor(schema, "input").json;
-  if (projection === undefined) {
-    throw new ForageError(
-      "invalid_input",
-      "Schema cannot be projected to JSON Schema",
-    );
-  }
-  return projection;
-}
-
-/** Produce a canonical schema representation used in peer identity and stamps. */
-export function schemaFingerprint(
-  schema: JsonSchemaSource,
-  io: "input" | "output" = "input",
-): string {
-  const facts = factsFor(schema, io);
-  facts.fingerprint ??= canonicalStringify(facts.json ?? null);
-  return facts.fingerprint;
-}
-
-function schemaDepth(value: JsonValue, depth: number): number {
-  if (depth > maximumSampleDepth) return depth;
-  if (Array.isArray(value)) {
-    let maximum = depth;
-    for (const item of value) {
-      maximum = Math.max(maximum, schemaDepth(item, depth + 1));
-    }
-    return maximum;
-  }
-  if (!isJsonObject(value)) return depth;
-  let maximum = depth;
-  for (const entry of Object.values(value)) {
-    maximum = Math.max(maximum, schemaDepth(entry, depth + 1));
-  }
-  return maximum;
-}
-
-/** Validate the bounded JSON projection before a catalog is installed. */
-export function schemaProjectionSize(
-  schema: JsonSchemaSource,
-  io: "input" | "output",
-): number | undefined {
-  const facts = factsFor(schema, io);
-  facts.size ??= { bytes: measureProjection(schema, io, facts.json) };
-  return facts.size.bytes;
-}
-
-function measureProjection(
-  schema: JsonSchemaSource,
-  io: "input" | "output",
-  projection: JsonValue | undefined,
-): number | undefined {
-  if (!projection) return undefined;
-  const encoded = JSON.stringify(projection);
-  if (
-    encoded.length > 20_000 ||
-    schemaDepth(projection, 0) > maximumSampleDepth
-  ) {
-    return undefined;
-  }
-  if (io === "output") return encoded.length;
-  const sample = deriveSample(schema);
-  if (!sample) return encoded.length;
-  if (
-    Object.keys(sample).length > maximumSampleEntries ||
-    schemaDepth(sample, 0) > maximumSampleDepth
-  ) {
-    return undefined;
-  }
-  let sampleText: string | undefined;
-  try {
-    sampleText = JSON.stringify(sample);
-  } catch {
-    throw new ForageError(
-      "invalid_input",
-      "Derived schema sample cannot be serialized",
-    );
-  }
-  if (!sampleText || sampleText.length > maximumSampleBytes) return undefined;
-  return encoded.length + sampleText.length;
 }

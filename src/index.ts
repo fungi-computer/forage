@@ -29,6 +29,7 @@ export { ForageError } from "./errors.js";
 export { createCatalog } from "./catalog.js";
 export {
   appApiOperations,
+  appJsonSchema,
   appMethodSchemas,
   appToolSchemas,
   appToolFamilySchemas,

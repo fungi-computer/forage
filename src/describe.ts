@@ -4,8 +4,13 @@ import {
   type DescribeOutput,
   type ForageDescribeInput,
 } from "./schemas.js";
-import { compareCodeUnits } from "./normalization.js";
-import { renderNamespaceIndex, renderOperationTypes } from "./rendering.js";
+import { compareCodeUnits, jsonValueSchema } from "./normalization.js";
+import {
+  rawSchema,
+  renderOperation,
+  renderNamespaceIndex,
+  renderOperationTypes,
+} from "./rendering.js";
 import { ForageError } from "./errors.js";
 import type { PreparedOperation } from "./search.js";
 
@@ -34,18 +39,26 @@ export function describeCatalog(
   );
   if (operation) {
     const callPath = `env.${operation.path}`;
+    const inputSchema = jsonValueSchema.safeParse(
+      rawSchema(operation.input, "input"),
+    );
+    if (!inputSchema.success)
+      throw new ForageError(
+        "invalid_input",
+        "Schema cannot be projected to JSON Schema",
+      );
     const output = {
       path: operation.path,
       description: boundedDescription(operation.description),
-      types: renderOperationTypes([operation.rendered]),
+      types: renderOperationTypes([renderOperation(operation)]),
       kind: "operation",
-      inputSchema: operation.inputSchema,
+      inputSchema: inputSchema.data,
       usage: `await ${callPath}({ ... })`,
     } as const;
     if (output.types.length > maximumDescriptionTypes) {
       throw new ForageError(
         "invalid_input",
-        "Description types exceed the bounded output",
+        "Operation description exceeds the bounded output",
       );
     }
     return checkedDescription(output);
@@ -70,17 +83,13 @@ export function describeCatalog(
 
   let types: string;
   if (rawInput.detail === "index") {
-    types = renderNamespaceIndex(
-      namespaceOperations.map((operation) => operation.rendered),
-    );
+    types = renderNamespaceIndex(namespaceOperations.map(renderOperation));
   } else if (rawInput.methods?.length && selected.length === 0) {
-    types = renderNamespaceIndex(
-      namespaceOperations.map((operation) => operation.rendered),
-    );
+    types = renderNamespaceIndex(namespaceOperations.map(renderOperation));
   } else {
     types = renderOperationTypes(
       (selected.length > 0 ? selected : namespaceOperations).map(
-        (operation) => operation.rendered,
+        renderOperation,
       ),
     );
   }

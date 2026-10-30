@@ -1,5 +1,20 @@
 # @fungi.computer/forage
 
+## 0.2.1
+
+### Patch Changes
+
+- Changes since 0.2.0:
+
+  - fix(forage): pin matched-word ranking dominance
+  - fix(forage): rank partial multiword capability matches
+  - fix(forage): reduce cold catalog validation allocation
+  - fix(forage): retain load-on-request App catalogs on current Integration
+  - fix(oyster): compile Agent App tool schemas only when used
+
+- Updated dependencies
+  - @fungi.computer/puffball@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

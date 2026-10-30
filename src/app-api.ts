@@ -9,9 +9,8 @@ const bindingName = z.lazy(() =>
     .max(75)
     .regex(/^[A-Za-z][A-Za-z0-9_]*$/),
 );
-const jsonSchema = z.lazy(() =>
-  z.union([z.record(z.string(), z.json()), z.boolean()]),
-);
+const jsonSchemaDocument = z.lazy(() => z.record(z.string(), z.json()));
+const jsonSchema = z.lazy(() => z.union([jsonSchemaDocument, z.boolean()]));
 
 /** The shared JSON-Schema compiler for App methods and OpenAPI operations. */
 export function jsonSchemaToZod(
@@ -21,26 +20,54 @@ export function jsonSchemaToZod(
   return z.fromJSONSchema(jsonSchema.parse(source), { defaultTarget });
 }
 
-/** Validate JSON with Zod; describe the declaration without the redundant JSON guard. */
-function appMethodSchema(
-  source: AppApi["methods"][string]["input"],
+type StandardJsonSchema = z.ZodType["~standard"]["jsonSchema"];
+type JsonSchemaDescription = ReturnType<StandardJsonSchema["input"]>;
+
+/**
+ * One decoded, immutable App declaration as a JSON-only Standard Schema.
+ * Release and family-listing decoders own its JSON boundary. A catalog
+ * describes every installed method on each capture but a turn validates only
+ * the few it calls. Compiling every method eagerly exhausted an Agent Durable
+ * Object's isolate. A draft 2020-12 description is the declaration itself;
+ * validators compile for the call in hand and are never kept on the surface.
+ */
+export function appJsonSchema(
+  declaration: AppApi["methods"][string]["input"] | boolean,
 ): Pick<
   z.ZodType<z.output<z.ZodJSONSchema>>,
   "parse" | "safeParse" | "~standard"
 > {
-  const declared = jsonSchemaToZod(source);
-  const validator = z.intersection(declared, z.json());
+  const build = () => jsonSchemaToZod(declaration);
+  const validate = () => z.intersection(build(), z.json());
+  const describe = (
+    io: "input" | "output",
+    options: Parameters<StandardJsonSchema["input"]>[0],
+  ): JsonSchemaDescription => {
+    if (
+      options.target === "draft-2020-12" &&
+      declaration !== true &&
+      declaration !== false
+    )
+      return declaration;
+    return build()["~standard"].jsonSchema[io](options);
+  };
   return {
-    parse: (value, options) => validator.parse(value, options),
-    safeParse: (value, options) => validator.safeParse(value, options),
+    parse: (value, options) => validate().parse(value, options),
+    safeParse: (value, options) => validate().safeParse(value, options),
     "~standard": {
-      ...validator["~standard"],
-      jsonSchema: declared["~standard"].jsonSchema,
+      version: 1,
+      vendor: "zod",
+      validate: (value, options) =>
+        validate()["~standard"].validate(value, options),
+      jsonSchema: {
+        input: (options) => describe("input", options),
+        output: (options) => describe("output", options),
+      },
     },
   };
 }
 
-/** Compile App validators and their Standard JSON Schema descriptions.
+/** Describe App methods with call-scoped JSON validators.
  * Validation enforces both the declaration and JSON-only values; discovery
  * describes the declaration without adding JSON guard nesting.
  * Agar's emitted output already includes Pending for opted-in methods. */
@@ -55,15 +82,15 @@ export function appMethodSchemas(api: AppApi) {
             effect: declaration.effect,
             requires: declaration.requires,
             pending: declaration.pending,
-            input: appMethodSchema(declaration.input),
-            output: appMethodSchema(declaration.output),
+            input: appJsonSchema(declaration.input),
+            output: appJsonSchema(declaration.output),
           },
         ] as const,
     ),
   );
 }
 
-/** Compile discoverable App methods only; direct RPC validation uses appMethodSchemas. */
+/** Describe discoverable App methods only; direct RPC validation uses appMethodSchemas. */
 export function appToolSchemas(api: AppApi) {
   return appMethodSchemas({
     ...api,
@@ -120,7 +147,7 @@ export function appToolFamilySchemas(api: AppApi, reply: unknown) {
   if (list === undefined || call === undefined)
     throw new Error("Tool family references undeclared methods");
   const inventory = familyInventory.parse(
-    appMethodSchema(list.output).parse(reply),
+    appJsonSchema(list.output).parse(reply),
   );
   return {
     name: family.name,
@@ -136,8 +163,8 @@ export function appToolFamilySchemas(api: AppApi, reply: unknown) {
             description: [row.title, row.description]
               .filter((text) => text.length > 0)
               .join("\n"),
-            input: appMethodSchema(row.input),
-            output: appMethodSchema(row.output),
+            input: appJsonSchema(row.input),
+            output: appJsonSchema(row.output),
           })),
   };
 }

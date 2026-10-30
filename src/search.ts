@@ -5,7 +5,6 @@ import {
   type SearchResult,
 } from "./schemas.js";
 import {
-  canonicalStringify,
   compareCodeUnits,
   hashString64,
   isStopword,
@@ -15,13 +14,7 @@ import {
   stemVariants,
   tokenize,
 } from "./normalization.js";
-import {
-  deriveSample,
-  inputSchemaProjection,
-  renderOperation,
-  schemaFingerprint,
-  type RenderedOperation,
-} from "./rendering.js";
+import { deriveSample, schemaText } from "./rendering.js";
 import type { JsonValue } from "./normalization.js";
 import { ForageError } from "./errors.js";
 
@@ -50,19 +43,21 @@ type Candidate = {
 /** Private installation-time projection used by the pure ranking function. */
 export type PreparedOperation = Operation & {
   readonly fingerprint: string;
-  readonly inputSchema: JsonValue;
   readonly sample: Record<string, JsonValue> | undefined;
-  readonly rendered: RenderedOperation;
+  readonly inputBytes: number;
+  readonly outputBytes: number;
 };
 
 /** Prepare schema-derived search metadata once for an immutable catalog revision. */
 export function prepareOperation(operation: Operation): PreparedOperation {
+  const input = schemaText(operation.input, "input");
+  const output = operation.output ? schemaText(operation.output, "output") : "";
   return Object.freeze({
     ...operation,
-    fingerprint: schemaFingerprint(operation.input),
-    inputSchema: inputSchemaProjection(operation.input),
+    fingerprint: hashString64(input + "\n" + output),
+    inputBytes: input.length,
+    outputBytes: output.length,
     sample: deriveSample(operation.input),
-    rendered: renderOperation(operation),
   });
 }
 
@@ -76,35 +71,38 @@ const matchWeight = {
   includes: 1,
 } satisfies Record<Exclude<MatchLevel, "none">, number>;
 
-function fieldWeight(field: string): number {
-  switch (field) {
-    case "path":
-      return 12;
-    case "namespace":
-      return 8;
-    case "method":
-      return 10;
-    case "description":
-      return 5;
-    default:
-      return 5;
-  }
-}
+const fieldWeight = {
+  path: 12,
+  namespace: 8,
+  method: 10,
+  description: 5,
+} as const;
+
+const fullCoverageBonus = 25;
+const partialCoverageBonus = 10;
+const firstTokenBonus = 8;
+const exactMatchBonus = 20;
+const maxBonus =
+  Math.max(fullCoverageBonus, partialCoverageBonus) +
+  firstTokenBonus +
+  exactMatchBonus;
+const dominanceDivisor =
+  1 +
+  Math.max(...Object.values(matchWeight)) *
+    Math.max(...Object.values(fieldWeight)) +
+  maxBonus;
 
 /** Identify every model-visible part of the catalog, including schemas. */
 function catalogStamp(operations: readonly PreparedOperation[]): string {
   const lines = [...operations]
     .sort((left, right) => compareCodeUnits(left.path, right.path))
     .map((operation) =>
-      canonicalStringify([
+      JSON.stringify([
         operation.path,
         operation.description ?? null,
         operation.capabilityNotes ?? null,
         operation.instructions ?? null,
         operation.fingerprint,
-        operation.output === undefined
-          ? null
-          : schemaFingerprint(operation.output, "output"),
       ]),
     );
   return hashString64(lines.join("\n"));
@@ -125,13 +123,13 @@ function scoreLevel(value: string, term: string): MatchLevel {
 
 function scoreField(
   rawValue: string,
-  field: string,
+  field: keyof typeof fieldWeight,
   queryTokens: readonly string[],
 ): ScoredField {
   const value = normalizeQuery(rawValue);
   let bestLevel: MatchLevel = "none";
   let bestScore = 0;
-  let matchedTokens: string[] = [];
+  const matchedTokens: string[] = [];
   for (const token of queryTokens) {
     const terms = [token, ...stemVariants(token)];
     let selected: MatchLevel = "none";
@@ -143,13 +141,11 @@ function scoreField(
       }
     }
     if (selected === "none") continue;
-    const score = matchWeight[selected] * fieldWeight(field);
+    const score = matchWeight[selected] * fieldWeight[field];
+    if (!matchedTokens.includes(token)) matchedTokens.push(token);
     if (score > bestScore) {
       bestLevel = selected;
       bestScore = score;
-      matchedTokens = [token];
-    } else if (score === bestScore && !matchedTokens.includes(token)) {
-      matchedTokens.push(token);
     }
   }
   return { level: bestLevel, score: bestScore, matchedTokens };
@@ -205,10 +201,8 @@ function emptyResult(stamp: string): SearchOutput {
 
 function scoreCandidate(
   operation: PreparedOperation,
-  normalizedQuery: string,
   queryTokens: readonly string[],
   coverageTokens: readonly string[],
-  threshold: number,
 ): Candidate | undefined {
   const namespace = operationNamespace(operation.path);
   const method = operationMethod(operation.path);
@@ -221,11 +215,8 @@ function scoreCandidate(
   const matched = coverageTokens.filter((token) =>
     fields.some((field) => tokenMatches(field, token)),
   ).length;
+  if (matched === 0) return undefined;
   const coverage = matched / coverageTokens.length;
-  const phraseMatch = normalizeQuery(
-    `${operation.path} ${description}`,
-  ).includes(normalizedQuery);
-  if (coverage < threshold && !phraseMatch) return undefined;
 
   const baseScore = Math.max(
     pathScore.score,
@@ -234,16 +225,23 @@ function scoreCandidate(
     descriptionScore.score,
   );
   if (baseScore === 0) return undefined;
-  let bonus = matched === coverageTokens.length ? 25 : coverage * 10;
+  let bonus =
+    matched === coverageTokens.length
+      ? fullCoverageBonus
+      : coverage * partialCoverageBonus;
   const firstToken = coverageTokens[0];
   if (firstToken && fields.some((field) => tokenMatches(field, firstToken))) {
-    bonus += 8;
+    bonus += firstTokenBonus;
   }
-  if (pathScore.level === "exact" || methodScore.level === "exact") bonus += 20;
+  if (pathScore.level === "exact" || methodScore.level === "exact") {
+    bonus += exactMatchBonus;
+  }
 
   const result: SearchResult = {
     path: operation.path,
-    score: baseScore + bonus,
+    // A whole matched word outranks any field-quality difference; the
+    // derived divisor keeps all field and bonus evidence below one word.
+    score: matched + (baseScore + bonus) / dominanceDivisor,
   };
   if (description) result.description = description;
   const reason = matchReason([
@@ -343,16 +341,9 @@ export function searchCatalog(
   const coverageTokens = queryTokens.filter((token) => !isStopword(token));
   if (coverageTokens.length === 0) return emptyResult(stamp);
 
-  const threshold = coverageTokens.length <= 2 ? 1 : 0.6;
   const candidates: Candidate[] = [];
   for (const operation of operations) {
-    const candidate = scoreCandidate(
-      operation,
-      normalizedQuery,
-      queryTokens,
-      coverageTokens,
-      threshold,
-    );
+    const candidate = scoreCandidate(operation, queryTokens, coverageTokens);
     if (candidate) candidates.push(candidate);
   }
 

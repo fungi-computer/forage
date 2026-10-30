@@ -622,16 +622,47 @@ The shared JSON-Schema compiler for App methods and OpenAPI operations.
 
 ---
 
+### appJsonSchema()
+
+```ts
+function appJsonSchema(
+  declaration,
+): Pick<
+  z.ZodType<z.output<z.ZodJSONSchema>>,
+  "parse" | "safeParse" | "~standard"
+>;
+```
+
+One decoded, immutable App declaration as a JSON-only Standard Schema. Release
+and family-listing decoders own its JSON boundary. A catalog describes every
+installed method on each capture but a turn validates only the few it calls.
+Compiling every method eagerly exhausted an Agent Durable Object's isolate. A
+draft 2020-12 description is the declaration itself; validators compile for the
+call in hand and are never kept on the surface.
+
+#### Parameters
+
+| Parameter     | Type                                                                                                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `declaration` | \| `boolean` \| \{ \[`key`: `string`\]: \| `null` \| `string` \| `number` \| `false` \| `true` \| \{ \[`index`: `number`\]: AppApiJsonValue; `length`: `number`; \} \| AppApiJsonObject; \} |
+
+#### Returns
+
+`Pick`\<`z.ZodType`\<`z.output`\<`z.ZodJSONSchema`\>\>, `"parse"` \|
+`"safeParse"` \| `"~standard"`\>
+
+---
+
 ### appMethodSchemas()
 
 ```ts
 function appMethodSchemas(api): object;
 ```
 
-Compile App validators and their Standard JSON Schema descriptions. Validation
-enforces both the declaration and JSON-only values; discovery describes the
-declaration without adding JSON guard nesting. Agar's emitted output already
-includes Pending for opted-in methods.
+Describe App methods with call-scoped JSON validators. Validation enforces both
+the declaration and JSON-only values; discovery describes the declaration
+without adding JSON guard nesting. Agar's emitted output already includes
+Pending for opted-in methods.
 
 #### Parameters
 
@@ -651,7 +682,7 @@ includes Pending for opted-in methods.
 function appToolSchemas(api): object;
 ```
 
-Compile discoverable App methods only; direct RPC validation uses
+Describe discoverable App methods only; direct RPC validation uses
 appMethodSchemas.
 
 #### Parameters

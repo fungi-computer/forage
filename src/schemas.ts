@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isJsonObject } from "./normalization.js";
 
 const pathPattern = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
 const maximumCatalogOperations = 1_000;
@@ -8,9 +9,10 @@ export const maximumSampleEntries = 100;
 export const maximumSampleBytes = 4_000;
 export const maximumSampleDepth = 16;
 
-type JsonValue = z.output<z.ZodJSONSchema>;
-
-function jsonDepth(value: JsonValue, depth: number): number {
+export function jsonDepth(
+  value: z.output<z.ZodJSONSchema>,
+  depth: number,
+): number {
   if (depth > maximumSampleDepth) return depth;
   if (Array.isArray(value)) {
     let maximum = depth;
@@ -19,11 +21,9 @@ function jsonDepth(value: JsonValue, depth: number): number {
     }
     return maximum;
   }
-  if (value === null) return depth;
-  const record = z.record(z.string(), z.json()).safeParse(value);
-  if (!record.success) return depth;
+  if (!isJsonObject(value)) return depth;
   let maximum = depth;
-  for (const item of Object.values(record.data)) {
+  for (const item of Object.values(value)) {
     maximum = Math.max(maximum, jsonDepth(item, depth + 1));
   }
   return maximum;
