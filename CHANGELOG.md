@@ -1,5 +1,18 @@
 # @fungi.computer/forage
 
+## 0.3.0
+
+### Minor Changes
+
+- Changes since 0.2.2:
+
+  - feat(prints): share one Print with a public, read-only link
+
+### Patch Changes
+
+- Updated dependencies
+  - @fungi.computer/puffball@0.5.0
+
 ## 0.2.2
 
 ### Patch Changes

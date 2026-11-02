@@ -722,6 +722,7 @@ function appToolFamilySchemas(
     | "computer.execute"
     | "llm.generation"
     | "media.generation"
+    | "media.share"
     | "games:servers"
     | "git.repository"
     | "apps.open"
@@ -761,11 +762,11 @@ arguments; this projection supplies neither defaults nor handlers.
 `"agent.manage"` \| `"agent.rename"` \| `"agent.avatar"` \| `"agent.toolPolicy"`
 \| `"agent.read"` \| `"agent.send"` \| `"computer.list"` \|
 `"computer.readFile"` \| `"computer.writeFile"` \| `"computer.execute"` \|
-`"llm.generation"` \| `"media.generation"` \| `"games:servers"` \|
-`"git.repository"` \| `"apps.open"` \| `"apps.call"` \| `"app.storage"` \|
-`"app.events.emit"` \| `"team.workbenchHost"` \| `"marketplace.browse"` \|
-`"marketplace.purchase"` \| `"workflow.run"` \| `"workflow.publish"` \|
-`"workflow.arm"` \| `"world"` \| `"channels.read"` \|
+`"llm.generation"` \| `"media.generation"` \| `"media.share"` \|
+`"games:servers"` \| `"git.repository"` \| `"apps.open"` \| `"apps.call"` \|
+`"app.storage"` \| `"app.events.emit"` \| `"team.workbenchHost"` \|
+`"marketplace.browse"` \| `"marketplace.purchase"` \| `"workflow.run"` \|
+`"workflow.publish"` \| `"workflow.arm"` \| `"world"` \| `"channels.read"` \|
 `"channels.personal.manage"`)[]; `kind`: `"ready"` \| `"unindexed"`; `tools`:
 `object`[]; \} \| `null`
 
