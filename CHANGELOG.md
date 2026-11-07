@@ -1,5 +1,11 @@
 # @fungi.computer/forage
 
+## 0.3.2
+
+### Patch Changes
+
+- @fungi.computer/puffball@0.5.2
+
 ## 0.3.1
 
 ### Patch Changes
