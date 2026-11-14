@@ -1,5 +1,12 @@
 # @fungi.computer/forage
 
+## 0.3.8
+
+### Patch Changes
+
+- Updated dependencies
+  - @fungi.computer/puffball@0.8.0
+
 ## 0.3.7
 
 ### Patch Changes
