@@ -1,30 +1,23 @@
 # Forage (`@fungi.computer/forage`)
 
-Forage lists, searches and describes a catalog of operations that a host has
-already provided, so a caller or a model can find the right one by name or by
-description. It helps a caller discover a capability. It does not execute that
-capability or grant permission to use it.
+Forage lets a person or an AI model search a list of available operations and
+read what each one does. It cannot run them.
 
-## Install or set up
+```mermaid
+flowchart LR
+  Host[Your host's operations] --> Catalog[Forage catalog]
+  Caller[Person or model] -->|search, describe, list| Catalog
+  Catalog -->|matches and descriptions| Caller
+  Caller -.->|runs through your host| Host
+```
+
+## Quick start
+
+Install it:
 
 ```sh
 npm install @fungi.computer/forage
 ```
-
-The package ships ESM only and depends on Zod, YAML, JSON Schema Ref Parser and
-[App Release](../puffball/README.md) at runtime. Each operation's input and
-output is any schema that implements Standard JSON Schema, such as a Zod 4
-schema; Forage only renders the JSON Schema it describes. Its discovery
-entrypoint is `@fungi.computer/forage`; host-only OpenAPI intake is
-`@fungi.computer/forage/openapi`. The pure JSON-Schema subset decoder is
-`@fungi.computer/forage/json-schema-subset`: `jsonSchemaSubset()` validates
-remote schemas before the shared `jsonSchemaToZod` compiler reads them. The
-subset rejects references, regular-expression constraints and reserved property
-names anywhere in the schema or JSON values. The decoder refuses depth over 32
-and more than 50,000 expanded nodes before recursive decoding; callers bound
-transport bytes separately.
-
-## Quick start
 
 This illustrative example creates an immutable catalog, searches it, and
 describes one operation:
@@ -51,6 +44,52 @@ const firstPage = catalog.list({ limit: 25 });
 
 The catalog tests exercise creation, search, description, and stable stamps in
 [`test/catalog.test.ts`](test/catalog.test.ts).
+
+## Common tasks
+
+### Search for an operation
+
+`catalog.search` finds operations by name or description. See the Quick start.
+
+### Read one operation
+
+`catalog.describe` returns its description and input shape. See the Quick start.
+
+### List everything in pages
+
+See [Exhaustive listing](#exhaustive-listing).
+
+### Build a catalog from OpenAPI
+
+See [OpenAPI intake](#openapi-intake).
+
+## Reference
+
+### Overview
+
+Forage lists, searches and describes a catalog of operations that a host has
+already provided, so a caller or a model can find the right one by name or by
+description. It helps a caller discover a capability. It does not execute that
+capability or grant permission to use it.
+
+## Install or set up
+
+```sh
+npm install @fungi.computer/forage
+```
+
+The package ships ESM only and depends on Zod, YAML, JSON Schema Ref Parser and
+[App Release](../puffball/README.md) at runtime. Each operation's input and
+output is any schema that implements Standard JSON Schema, such as a Zod 4
+schema; Forage only renders the JSON Schema it describes. Its discovery
+entrypoint is `@fungi.computer/forage`; host-only OpenAPI intake is
+`@fungi.computer/forage/openapi`. The pure JSON-Schema subset decoder is
+`@fungi.computer/forage/json-schema-subset`: `jsonSchemaSubset()` validates
+remote schemas before the shared `jsonSchemaToZod` compiler reads them. The
+subset rejects references, regular-expression constraints and reserved property
+names anywhere in the schema or JSON values. The decoder refuses depth over 32
+and more than 50,000 expanded nodes before recursive decoding; callers bound
+transport bytes separately.
 
 ## Core concepts
 
