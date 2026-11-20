@@ -715,6 +715,7 @@ function appToolFamilySchemas(
     | "agent.avatar"
     | "agent.instructions"
     | "agent.toolPolicy"
+    | "agent.stop"
     | "agent.read"
     | "agent.send"
     | "computer.list"
@@ -761,9 +762,9 @@ arguments; this projection supplies neither defaults nor handlers.
 \| \{ `name`: `string`; `call`: `string`; `effect`: `"write"` \| `"external"` \|
 `"read"`; `requires`: readonly ( \| `"approvals"` \| `"agent.list"` \|
 `"agent.manage"` \| `"agent.rename"` \| `"agent.avatar"` \|
-`"agent.instructions"` \| `"agent.toolPolicy"` \| `"agent.read"` \|
-`"agent.send"` \| `"computer.list"` \| `"computer.readFile"` \|
-`"computer.writeFile"` \| `"computer.execute"` \| `"llm.generation"` \|
+`"agent.instructions"` \| `"agent.toolPolicy"` \| `"agent.stop"` \|
+`"agent.read"` \| `"agent.send"` \| `"computer.list"` \| `"computer.readFile"`
+\| `"computer.writeFile"` \| `"computer.execute"` \| `"llm.generation"` \|
 `"media.generation"` \| `"media.share"` \| `"games:servers"` \|
 `"git.repository"` \| `"apps.open"` \| `"apps.call"` \| `"app.storage"` \|
 `"app.events.emit"` \| `"team.workbenchHost"` \| `"marketplace.browse"` \|

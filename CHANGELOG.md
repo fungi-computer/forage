@@ -1,5 +1,18 @@
 # @fungi.computer/forage
 
+## 0.4.0
+
+### Minor Changes
+
+- Changes since 0.3.13:
+
+  - feat(agar): add the agent.stop capability for stop all
+
+### Patch Changes
+
+- Updated dependencies
+  - @fungi.computer/puffball@0.13.0
+
 ## 0.3.13
 
 ### Patch Changes
