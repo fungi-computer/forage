@@ -1,5 +1,17 @@
 # @fungi.computer/forage
 
+## 0.5.2
+
+### Patch Changes
+
+- Changes since 0.5.1:
+
+  - fix(computer): make spaced namespaces discoverable and preserve file
+    failures
+  - fix(forage): size the index tail exactly, singular count, index only a
+    selection
+  - fix(forage): describe a large namespace as a bounded method index
+
 ## 0.5.1
 
 ### Patch Changes

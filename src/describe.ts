@@ -29,6 +29,45 @@ function checkedDescription(output: DescribeOutput): DescribeOutput {
   return parsed.data;
 }
 
+function oneLine(value: string | undefined): string {
+  const first = (value ?? "").trim().split("\n")[0] ?? "";
+  return first.length > 120 ? `${first.slice(0, 119)}…` : first;
+}
+
+/**
+ * A namespace too large to describe in full still gets an answer: its method
+ * names with one-line descriptions, cut at the bound with a count of what is
+ * left, and how to reach each method's types or page the rest.
+ */
+function tailFor(path: string, rest: number): string {
+  return `\n// ${String(rest)} more ${rest === 1 ? "method" : "methods"} not shown; page them with list({ namespace: "${path}" }).`;
+}
+
+function methodIndex(
+  path: string,
+  prefix: string,
+  operations: readonly PreparedOperation[],
+): string {
+  const header = `// ${path}: ${String(operations.length)} ${operations.length === 1 ? "method" : "methods"}; their full types exceed the output bound.\n// Describe ${path}.<method> for one method's types, or pass methods: [...] for several.\n`;
+  const lines = operations.map((operation) => {
+    const description = oneLine(operation.description);
+    const name = operation.path.slice(prefix.length);
+    return description.length > 0
+      ? `//   ${name} - ${description}`
+      : `//   ${name}`;
+  });
+  // The longest tail names every method left, so it bounds any real tail.
+  let used = header.length + tailFor(path, lines.length).length;
+  const kept: string[] = [];
+  for (const line of lines) {
+    if (used + line.length + 1 > maximumDescriptionTypes) break;
+    kept.push(line);
+    used += line.length + 1;
+  }
+  const rest = lines.length - kept.length;
+  return `${header}${kept.join("\n")}${rest > 0 ? tailFor(path, rest) : ""}`;
+}
+
 /** Pure deterministic description of an operation or its namespace. */
 export function describeCatalog(
   operations: readonly PreparedOperation[],
@@ -69,11 +108,17 @@ export function describeCatalog(
     .filter((candidate) => candidate.path.startsWith(prefix))
     .sort((left, right) => compareCodeUnits(left.path, right.path));
   if (namespaceOperations.length === 0) {
-    throw new ForageError("unknown_target", `Unknown target: ${rawInput.path}`);
+    throw new ForageError(
+      "unknown_target",
+      `Unknown target: ${rawInput.path}. Use forage.search to find available paths.`,
+    );
   }
   const first = namespaceOperations[0];
   if (!first) {
-    throw new ForageError("unknown_target", `Unknown target: ${rawInput.path}`);
+    throw new ForageError(
+      "unknown_target",
+      `Unknown target: ${rawInput.path}. Use forage.search to find available paths.`,
+    );
   }
   const selected = rawInput.methods?.length
     ? namespaceOperations.filter((candidate) =>
@@ -94,12 +139,14 @@ export function describeCatalog(
     );
   }
 
-  if (types.length > maximumDescriptionTypes) {
-    throw new ForageError(
-      "invalid_input",
-      "Description types exceed the bounded output",
+  if (types.length > maximumDescriptionTypes)
+    types = methodIndex(
+      rawInput.path,
+      prefix,
+      selected.length > 0 && rawInput.methods?.length
+        ? selected
+        : namespaceOperations,
     );
-  }
   return checkedDescription({
     path: rawInput.path,
     description: boundedDescription(first.instructions),

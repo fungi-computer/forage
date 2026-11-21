@@ -923,12 +923,71 @@ describe("Forage boundary and structural contracts", () => {
     expect(
       catalog.describe({ path: "tools", methods: ["read_0"] }).types,
     ).toContain("tools$read_0_Input");
-    expect(() => catalog.describe({ path: "tools" })).toThrow(
-      "Description types exceed the bounded output",
-    );
-    expect(() => catalog.describe({ path: "tools", detail: "index" })).toThrow(
-      "Description types exceed the bounded output",
-    );
+    for (const input of [
+      { path: "tools" },
+      { path: "tools", detail: "index" as const },
+    ]) {
+      const answer = catalog.describe(input);
+      expect(answer.kind).toBe("module");
+      expect(answer.types.length).toBeLessThanOrEqual(20_000);
+      expect(answer.types).toContain("read_0");
+      expect(answer.types).toContain("Describe tools.<method>");
+      expect(answer.types).toContain("read_159");
+    }
+  });
+  it("cuts a method index at the bound and says how many methods are left", () => {
+    const operations = Array.from({ length: 400 }, (_, index) => ({
+      path: `big.method_${String(index)}`,
+      description: `Does thing ${String(index)}. ${"detail ".repeat(40)}`,
+      input: z.object({ ["x".repeat(100)]: z.string() }),
+    }));
+    const answer = createCatalog({ revision: "r", operations }).describe({
+      path: "big",
+    });
+    expect(answer.types.length).toBeLessThanOrEqual(20_000);
+    expect(answer.types).toMatch(/\d+ more methods? not shown/u);
+    expect(answer.types).toContain("method_0 - Does thing 0.");
+  });
+  it("keeps a method index within the bound for a very long namespace path", () => {
+    const path = `${"a".repeat(74)}.${"b".repeat(75)}`;
+    expect(path).toHaveLength(150);
+    const operations = Array.from({ length: 400 }, (_, index) => ({
+      path: `${path}.m${String(index)}`,
+      description: `Does thing ${String(index)}. ${"detail ".repeat(40)}`,
+      input: z.object({ ["x".repeat(100)]: z.string() }),
+    }));
+    const answer = createCatalog({ revision: "r", operations }).describe({
+      path,
+    });
+    expect(answer.types.length).toBeLessThanOrEqual(20_000);
+    expect(answer.types).toMatch(/\d+ more methods? not shown/u);
+  });
+  it("says one more method in the singular", () => {
+    const operations = Array.from({ length: 2 }, (_, index) => ({
+      path: `one.method_${String(index)}`,
+      description: "x".repeat(110),
+      input: z.object({ ["y".repeat(9_000)]: z.string() }),
+    }));
+    const answer = createCatalog({ revision: "r", operations }).describe({
+      path: "one",
+    });
+    expect(answer.types).not.toContain("1 more methods");
+  });
+  it("indexes only the selected methods when the selection is over the bound", () => {
+    const operations = Array.from({ length: 6 }, (_, index) => ({
+      path: `sel.method_${String(index)}`,
+      description: `Method ${String(index)}.`,
+      input: z.object({ ["y".repeat(5_000)]: z.string() }),
+    }));
+    const answer = createCatalog({ revision: "r", operations }).describe({
+      path: "sel",
+      methods: ["method_1", "method_2", "method_3", "method_4"],
+    });
+    expect(answer.types.length).toBeLessThanOrEqual(20_000);
+    expect(answer.types).toContain("method_1 - Method 1.");
+    expect(answer.types).toContain("method_4 - Method 4.");
+    expect(answer.types).not.toContain("method_0");
+    expect(answer.types).not.toContain("method_5");
   });
   it("rejects an oversized combined description when that operation is requested", () => {
     const schema = z.enum(
@@ -1069,9 +1128,10 @@ it("installs many sibling nested namespaces while retaining each description's b
   expect(catalog.describe({ path: "apps.app17.windows" }).types).toContain(
     '["app17"]',
   );
-  expect(() => catalog.describe({ path: "apps" })).toThrow(
-    "Description types exceed the bounded output",
-  );
+  const apps = catalog.describe({ path: "apps" });
+  expect(apps.types.length).toBeLessThanOrEqual(20_000);
+  expect(apps.types).toContain("app17.windows.open0");
+  expect(apps.types).toContain("Describe apps.<method>");
 });
 
 describe("Standard JSON Schema sources", () => {
@@ -1513,4 +1573,11 @@ describe("schema projection reuse", () => {
     const described = second.describe({ path: "files.inspect" });
     expect(described).toEqual(first.describe({ path: "files.inspect" }));
   });
+});
+
+it("an unknown description names the requested path and points to discovery", () => {
+  const catalog = createCatalog({ revision: "unknown", operations: files });
+  expect(() => catalog.describe({ path: "files.missing" })).toThrow(
+    "Unknown target: files.missing. Use forage.search to find available paths.",
+  );
 });
