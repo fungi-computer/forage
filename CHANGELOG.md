@@ -1,5 +1,19 @@
 # @fungi.computer/forage
 
+## 0.5.0
+
+### Minor Changes
+
+- Changes since 0.4.1:
+
+  - feat(agar): add the agent.extensions capability for attaching hosted
+    extensions
+
+### Patch Changes
+
+- Updated dependencies
+  - @fungi.computer/puffball@0.14.0
+
 ## 0.4.1
 
 ### Patch Changes
