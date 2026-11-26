@@ -1,5 +1,13 @@
 # @fungi.computer/forage
 
+## 0.6.0
+
+### Minor Changes
+
+- Changes since 0.5.5:
+
+  - feat(hub): a parked approval holds the asking Session until it ends
+
 ## 0.5.5
 
 ### Patch Changes

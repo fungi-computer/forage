@@ -103,23 +103,28 @@ export function describeCatalog(
     return checkedDescription(output);
   }
 
+  const exists = (path: string) =>
+    operations.some(
+      (candidate) =>
+        candidate.path === path || candidate.path.startsWith(`${path}.`),
+    );
+  /** A path with dashes names nothing: bindings spell them with underscores. */
+  const unknownTarget = () => {
+    const underscored = rawInput.path.replaceAll("-", "_");
+    return new ForageError(
+      "unknown_target",
+      underscored !== rawInput.path && exists(underscored)
+        ? `Unknown target: ${rawInput.path}. Did you mean ${underscored}? Names with dashes are spelled with underscores in env paths. Use forage.search to find available paths.`
+        : `Unknown target: ${rawInput.path}. Use forage.search to find available paths.`,
+    );
+  };
   const prefix = `${rawInput.path}.`;
   const namespaceOperations = operations
     .filter((candidate) => candidate.path.startsWith(prefix))
     .sort((left, right) => compareCodeUnits(left.path, right.path));
-  if (namespaceOperations.length === 0) {
-    throw new ForageError(
-      "unknown_target",
-      `Unknown target: ${rawInput.path}. Use forage.search to find available paths.`,
-    );
-  }
+  if (namespaceOperations.length === 0) throw unknownTarget();
   const first = namespaceOperations[0];
-  if (!first) {
-    throw new ForageError(
-      "unknown_target",
-      `Unknown target: ${rawInput.path}. Use forage.search to find available paths.`,
-    );
-  }
+  if (!first) throw unknownTarget();
   const selected = rawInput.methods?.length
     ? namespaceOperations.filter((candidate) =>
         rawInput.methods?.includes(candidate.path.slice(prefix.length)),

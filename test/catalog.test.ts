@@ -1575,6 +1575,32 @@ describe("schema projection reuse", () => {
   });
 });
 
+it("a path with dashes that exists with underscores says so", () => {
+  const catalog = createCatalog({
+    revision: "dashes",
+    operations: [
+      {
+        path: "computers.watchful_propolis.files.list",
+        description: "List files",
+        input: z.object({}),
+        output: z.object({}),
+      },
+    ],
+  });
+  expect(() =>
+    catalog.describe({ path: "computers.watchful-propolis.files.list" }),
+  ).toThrow(
+    "Did you mean computers.watchful_propolis.files.list? Names with dashes are spelled with underscores in env paths.",
+  );
+  expect(() =>
+    catalog.describe({ path: "computers.watchful-propolis" }),
+  ).toThrow("Did you mean computers.watchful_propolis?");
+  // A path that exists under no spelling keeps the plain message.
+  expect(() => catalog.describe({ path: "computers.other-box" })).toThrow(
+    "Unknown target: computers.other-box. Use forage.search to find available paths.",
+  );
+});
+
 it("an unknown description names the requested path and points to discovery", () => {
   const catalog = createCatalog({ revision: "unknown", operations: files });
   expect(() => catalog.describe({ path: "files.missing" })).toThrow(
